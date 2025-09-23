@@ -1,0 +1,7 @@
+numpy
+matplotlib
+pyvisa
+pyserialnumpy
+matplotlib
+pyvisa
+pyserial
