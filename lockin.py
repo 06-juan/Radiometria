@@ -1,9 +1,8 @@
 import pyvisa
-import time
 
-# Variable global para guardar la amplitud deseada (ej. 2V o 5V)
+# Variable global para guardar la amplitud deseada (ej. 2.5V o 1V)
 LASER_ON_VOLTAGE = 2.5  
-LASER_OFF_VOLTAGE = 1.0 # El SR830 no baja a 0 absoluto, 4mV es el mínimo.
+LASER_OFF_VOLTAGE = 1.0 
 
 def set_amplitude(voltage, resource_name='GPIB0::8::INSTR'):
     """Cambia la amplitud del Sine Out del SR830."""

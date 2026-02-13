@@ -1,69 +1,70 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import pyqtgraph.opengl as gl
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtCore import Qt
 
-def graficar_superficie(x, y, z_dicts):
-    # Extraemos cada magnitud en listas
-    Zx = np.array([d['X'] for d in z_dicts])
-    Zy = np.array([d['Y'] for d in z_dicts])
-    Zr = np.array([d['R'] for d in z_dicts])
-    Zphi = np.array([d['phi'] for d in z_dicts])
+class Grafica3DRealTime(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+        
+        # Widget de vista OpenGL
+        self.view = gl.GLViewWidget()
+        self.view.opts['distance'] = 20  # Distancia inicial de la cámara
+        self.view.setWindowTitle('Superficie Fototérmica en Vivo')
+        self.layout.addWidget(self.view)
 
-    # Convertimos x,y a arrays
-    x = np.array(x)
-    y = np.array(y)
+        # Crear una rejilla de suelo para referencia
+        gz = gl.GLGridItem()
+        gz.translate(0, 0, 0)
+        self.view.addItem(gz)
+        
+        self.surface_item = None
+        self.x_grid = None
+        self.y_grid = None
+        self.z_grid = None
 
-    # --- Paso clave ---
-    # Como es un barrido en malla, reorganizamos en forma de matriz
-    x_unique = np.unique(x)
-    y_unique = np.unique(y)
-    X, Y = np.meshgrid(x_unique, y_unique)
+    def inicializar_malla(self, x_max, y_max, res):
+        """Prepara la 'sábana' vacía basada en las dimensiones del barrido"""
+        # Calcular vectores de coordenadas
+        xs = np.arange(0, x_max + res, res)
+        ys = np.arange(0, y_max + res, res)
+        
+        self.nx = len(xs)
+        self.ny = len(ys)
+        
+        # Crear mallas 2D
+        self.x_grid, self.y_grid = np.meshgrid(xs, ys)
+        
+        # Inicializar Z con ceros (o un valor base)
+        self.z_grid = np.zeros((self.ny, self.nx))
 
-    # Reordenamos Z usando reshape
-    nx = len(x_unique)
-    ny = len(y_unique)
-    Zx = Zx.reshape(ny, nx)
-    Zy = Zy.reshape(ny, nx)
-    Zr = Zr.reshape(ny, nx)
-    Zphi = Zphi.reshape(ny, nx)
+        # Eliminar superficie anterior si existe
+        if self.surface_item:
+            self.view.removeItem(self.surface_item)
 
-    # ---- Gráfica X ----
-    fig1 = plt.figure()
-    ax1 = fig1.add_subplot(111, projection='3d')
-    surf1 = ax1.plot_surface(X, Y, Zx, cmap='viridis')
-    ax1.set_title("X (In-phase)")
-    ax1.set_xlabel("X pos (mm)")
-    ax1.set_ylabel("Y pos (mm)")
-    ax1.set_zlabel("X (V)")
-    fig1.colorbar(surf1, shrink=0.5, aspect=10)
+        # Crear el objeto de superficie OpenGL
+        # shader='shaded' da el aspecto sólido con iluminación
+        self.surface_item = gl.GLSurfacePlotItem(x=xs, y=ys, z=self.z_grid, shader='shaded')
+        
+        # Configurar colores (mapa de calor básico)
+        self.surface_item.shader()['colorMap'] = np.array([0.2, 2, 0.5, 0.2, 1, 1, 0.2, 0, 2])
+        
+        self.view.addItem(self.surface_item)
 
-    # ---- Gráfica Y ----
-    fig2 = plt.figure()
-    ax2 = fig2.add_subplot(111, projection='3d')
-    surf2 = ax2.plot_surface(X, Y, Zy, cmap='plasma')
-    ax2.set_title("Y (Quadrature)")
-    ax2.set_xlabel("X pos (mm)")
-    ax2.set_ylabel("Y pos (mm)")
-    ax2.set_zlabel("Y (V)")
-    fig2.colorbar(surf2, shrink=0.5, aspect=10)
+    def actualizar_punto(self, x_val, y_val, z_val, res):
+        """Actualiza un solo punto en la malla y refresca la vista"""
+        if self.surface_item is None:
+            return
 
-    # ---- Gráfica R ----
-    fig3 = plt.figure()
-    ax3 = fig3.add_subplot(111, projection='3d')
-    surf3 = ax3.plot_surface(X, Y, Zr, cmap='inferno')
-    ax3.set_title("R (Magnitude)")
-    ax3.set_xlabel("X pos (mm)")
-    ax3.set_ylabel("Y pos (mm)")
-    ax3.set_zlabel("R (V)")
-    fig3.colorbar(surf3, shrink=0.5, aspect=10)
+        # Encontrar los índices correspondientes en la matriz
+        ix = int(round(x_val / res))
+        iy = int(round(y_val / res))
 
-    # ---- Gráfica phi ----
-    fig4 = plt.figure()
-    ax4 = fig4.add_subplot(111, projection='3d')
-    surf4 = ax4.plot_surface(X, Y, Zphi, cmap='cividis')
-    ax4.set_title("φ (Phase)")
-    ax4.set_xlabel("X pos (mm)")
-    ax4.set_ylabel("Y pos (mm)")
-    ax4.set_zlabel("φ (deg)")
-    fig4.colorbar(surf4, shrink=0.5, aspect=10)
-
-    plt.show()
+        # Protección contra índices fuera de rango
+        if 0 <= ix < self.nx and 0 <= iy < self.ny:
+            self.z_grid[iy, ix] = z_val
+            
+            # Actualizar la data en el objeto OpenGL
+            self.surface_item.setData(z=self.z_grid)
