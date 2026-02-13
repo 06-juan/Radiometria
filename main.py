@@ -30,10 +30,27 @@ class WorkerThread(QThread):
 
     def run(self):
         try:
-            # Iterar sobre el generador de la mesa
+            print("Esperando a que el Arduino despierte...")
+            time.sleep(2) # Tiempo para el reinicio del Arduino
+            
+            if hasattr(self.mesa, 'arduino') and self.mesa.arduino.is_open:
+                # --- LIMPIEZA AGRESIVA ---
+                # Leemos todo lo que haya en el búfer hasta que no quede nada
+                while self.mesa.arduino.in_waiting > 0:
+                    self.mesa.arduino.read_all()
+                    time.sleep(0.1)
+                
+                print("Puerto purgado. Enviando comando de inicio...")
+                
+                # Avisamos al Arduino que empiece (Asegúrate que tu Arduino espere una 'S')
+                self.mesa.arduino.write(b'S\n') 
+                time.sleep(0.1)
+
+            # 3. Iniciar el generador
+            # Pasamos un parámetro extra para saber que es un inicio real
             for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res):
-                # Emitir señal para actualizar gráfica
                 self.data_signal.emit(x, y, z_data)
+                
         except Exception as e:
             self.error_signal.emit(str(e))
         finally:
@@ -182,7 +199,7 @@ class MainWindow(QMainWindow):
             self.btn_home.setEnabled(True)
             self.btn_measure.setEnabled(True)
             self.btn_stop.setEnabled(True)
-            QMessageBox.showinfo(self, "Info", "Hardware conectado y listo.")
+            QMessageBox.information(self, "Info", "Hardware conectado y listo.")
         except Exception as e:
             QMessageBox.critical(self, "Error de Conexión", f"No se pudo conectar: {e}")
 
@@ -192,20 +209,16 @@ class MainWindow(QMainWindow):
 
     def start_measurement(self):
         if not self.mesa: return
-    
-        # Ahora es mucho más directo:
+
+        # Calculamos la resolución una sola vez aquí
+        self.res_actual = self.slider_res.value() / 1000.0  # Si el slider marca 5, res = 0.005mm
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
-        res = self.slider_res.value() / 1000.0
-        
-        # 2. Inicializar gráfica vacía
-        self.plotter.inicializar_malla(x_max, y_max, res)
-        
-        # 3. Bloquear interfaz
+
+        self.plotter.inicializar_malla(x_max, y_max, self.res_actual)
+
         self.toggle_inputs(False)
-        
-        # 4. Iniciar Worker Thread
-        self.worker = WorkerThread(self.mesa, x_max, y_max, res)
+        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual)
         self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
         self.worker.error_signal.connect(self.measurement_error)
@@ -213,11 +226,9 @@ class MainWindow(QMainWindow):
 
     def handle_new_data(self, x, y, data_dict):
         """Recibe datos del hilo y actualiza la gráfica"""
-        # data_dict tiene {'R': ..., 'phi': ...}
-        # Graficamos la magnitud R
-        res = self.slider_res.value() / 100.0
         if 'R' in data_dict:
-            self.plotter.actualizar_punto(x, y, data_dict['R'], res)
+            # IMPORTANTE: Usamos la misma self.res_actual que definimos al inicio
+            self.plotter.actualizar_punto(x, y, data_dict['R'], self.res_actual)
 
     def emergency_stop(self):
         """Detiene todo y cierra conexión"""
@@ -240,7 +251,7 @@ class MainWindow(QMainWindow):
 
     def measurement_finished(self):
         self.toggle_inputs(True)
-        QMessageBox.showinfo(self, "Fin", "Barrido completado.")
+        QMessageBox.information(self, "Fin", "Barrido completado.")
 
     def measurement_error(self, err_msg):
         self.toggle_inputs(True)

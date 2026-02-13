@@ -42,7 +42,6 @@ def get_measurements(resource_name='GPIB0::8::INSTR', timeout=5000):
         
         # Obtiene X, Y, R, φ en una sola consulta
         snap_response = inst.query('SNAP? 1,2,3,4').strip()
-        print(snap_response)
         values = [float(val) for val in snap_response.split(',')]
         if len(values) != 4:
             raise ValueError(f"Respuesta SNAP inválida: {snap_response}")

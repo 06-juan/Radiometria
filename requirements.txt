@@ -1,13 +1,13 @@
 # Interfaz Gráfica (Estable y compatible con pyqtgraph)
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
-PyQt6-sip==13.6.0
+PyQt6>=6.7.0
+PyQt6-Qt6>=6.7.0
+PyQt6-sip>=13.8.0
 
 # Motor Gráfico de Alto Rendimiento
 pyqtgraph==0.13.3
 
 # El corazón del cálculo numérico (Versión robusta)
-numpy==1.26.4
+numpy<2.0
 
 # Comunicación y Hardware
 pyserial==3.5
@@ -16,3 +16,5 @@ pyvisa==1.14.1
 # Renderizado 3D (Esencial para la fluidez que buscas)
 PyOpenGL==3.1.7
 #PyOpenGL-accelerate==3.1.7
+
+matplotlib

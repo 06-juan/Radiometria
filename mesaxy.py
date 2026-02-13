@@ -22,8 +22,12 @@ class MesaXY:
         while True:
             if self.ser.in_waiting:
                 line = self.ser.readline().decode('utf-8').strip()
-                if line == "READY": return
-            if time.time() - start_time > 5: # Timeout corto para init
+                if line == "READY": 
+                    return
+                if line == "HOMED":
+                     return
+            if time.time() - start_time > 60: # Timeout corto para init
+                print("timeout")
                 break # A veces el Arduino ya está listo y no envía READY de nuevo
 
     def _send_command(self, cmd):
@@ -86,11 +90,17 @@ class MesaXY:
                     # Decirle al Arduino que continúe
                     self._send_command("CONT")
 
-                elif line == "OK":
-                    print("Arduino reporta fin de barrido.")
-                    break
                 elif line.startswith("ERR"):
-                    raise RuntimeError(f"Arduino Error: {line}")
+                                    raise RuntimeError(f"Arduino Error: {line}")
+                
+                elif line == "OK":
+                    if len(z_data) > 10: 
+                        print("Barrido terminado legalmente.")
+                        break              
+                    else:
+                        print("Ignorando fin de barrido falso...")
+                        continue
+                
             
             # Pequeña pausa para no saturar CPU mientras espera serial
             else:
@@ -101,7 +111,7 @@ class MesaXY:
 
     def home(self):
         self._send_command("HOME")
-        print("Homed")
+        self._wait_for_ready()
 
     def ping(self): #Verifiquemos la conexion de una forma chistosa jajaja
         response = self._send_command("PING")

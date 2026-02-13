@@ -1,7 +1,11 @@
 import numpy as np
+# Parche para compatibilidad con NumPy 2.0
+if not hasattr(np, 'product'):
+    np.product = np.prod
+
 import pyqtgraph.opengl as gl
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
-from PyQt6.QtCore import Qt
+import matplotlib.pyplot as plt
 
 class Grafica3DRealTime(QWidget):
     def __init__(self):
@@ -9,62 +13,90 @@ class Grafica3DRealTime(QWidget):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         
-        # Widget de vista OpenGL
+        # Configuración de la vista 3D
         self.view = gl.GLViewWidget()
-        self.view.opts['distance'] = 20  # Distancia inicial de la cámara
-        self.view.setWindowTitle('Superficie Fototérmica en Vivo')
+        self.view.opts['distance'] = 40
+        self.view.opts['elevation'] = 30
+        self.view.opts['azimuth'] = 45
+        self.view.setBackgroundColor('k') # Fondo negro para que resalte el arcoíris
         self.layout.addWidget(self.view)
 
-        # Crear una rejilla de suelo para referencia
+        # Grillas de referencia
+        self.crear_grillas()
+
+        self.surface_item = None
+        self.z_grid = None
+        # Cambiado a 'jet' para el efecto Rainbow (arcoíris)
+        self.cmap = plt.get_cmap('jet') 
+
+        # FACTOR DE ESCALA VISUAL
+        self.z_scale_factor = 100000.0 
+
+    def crear_grillas(self):
         gz = gl.GLGridItem()
         gz.translate(0, 0, 0)
         self.view.addItem(gz)
-        
-        self.surface_item = None
-        self.x_grid = None
-        self.y_grid = None
-        self.z_grid = None
 
     def inicializar_malla(self, x_max, y_max, res):
-        """Prepara la 'sábana' vacía basada en las dimensiones del barrido"""
-        # Calcular vectores de coordenadas
-        xs = np.arange(0, x_max + res, res)
-        ys = np.arange(0, y_max + res, res)
+        # Asegurar que el rango incluya el punto final
+        self.xs = np.arange(0, x_max + res, res)
+        self.ys = np.arange(0, y_max + res, res)
         
-        self.nx = len(xs)
-        self.ny = len(ys)
+        self.nx = len(self.xs)
+        self.ny = len(self.ys)
         
-        # Crear mallas 2D
-        self.x_grid, self.y_grid = np.meshgrid(xs, ys)
-        
-        # Inicializar Z con ceros (o un valor base)
         self.z_grid = np.zeros((self.ny, self.nx))
 
-        # Eliminar superficie anterior si existe
         if self.surface_item:
             self.view.removeItem(self.surface_item)
 
-        # Crear el objeto de superficie OpenGL
-        # shader='shaded' da el aspecto sólido con iluminación
-        self.surface_item = gl.GLSurfacePlotItem(x=xs, y=ys, z=self.z_grid, shader='shaded')
-        
-        # Configurar colores (mapa de calor básico)
-        self.surface_item.shader()['colorMap'] = np.array([0.2, 2, 0.5, 0.2, 1, 1, 0.2, 0, 2])
-        
+        # Inicializamos la superficie
+        # Usamos shader=None para que los colores que mandamos manualmente se vean puros
+        self.surface_item = gl.GLSurfacePlotItem(
+            x=self.xs, 
+            y=self.ys, 
+            z=self.z_grid, 
+            shader='shaded', # 'shaded' permite ver relieve con los colores
+            smooth=False
+        )
         self.view.addItem(self.surface_item)
+        print(f"Malla inicializada: {self.nx}x{self.ny} puntos.")
 
     def actualizar_punto(self, x_val, y_val, z_val, res):
-        """Actualiza un solo punto en la malla y refresca la vista"""
         if self.surface_item is None:
             return
 
-        # Encontrar los índices correspondientes en la matriz
+        # 1. Calcular índices
         ix = int(round(x_val / res))
         iy = int(round(y_val / res))
 
-        # Protección contra índices fuera de rango
         if 0 <= ix < self.nx and 0 <= iy < self.ny:
-            self.z_grid[iy, ix] = z_val
+            # Aplicar escala visual
+            z_visual = z_val * self.z_scale_factor
+            self.z_grid[iy, ix] = z_visual
             
-            # Actualizar la data en el objeto OpenGL
-            self.surface_item.setData(z=self.z_grid)
+            # --- CÁLCULO DE COLORES (RAINBOW) ---
+            z_min = self.z_grid.min()
+            z_max = self.z_grid.max()
+            diff = z_max - z_min
+            
+            # Normalizamos Z entre 0 y 1 para el mapa de colores
+            if diff > 1e-15:
+                z_norm = (self.z_grid - z_min) / diff
+            else:
+                z_norm = np.zeros_like(self.z_grid)
+
+            # Obtenemos los colores RGBA usando el colormap 'jet' (Arcoíris)
+            # colores_grid tendrá forma (11, 11, 4)
+            colores_grid = self.cmap(z_norm) 
+
+            # ¡AQUÍ ESTÁ EL TRUCO! 
+            # Aplanamos los colores a (121, 4) para evitar que pyqtgraph se confunda con los índices
+            colores_flat = colores_grid.reshape(-1, 4)
+
+            # 2. ACTUALIZAR GRÁFICA
+            # Pasamos la matriz Z normal y los colores aplanados
+            self.surface_item.setData(z=self.z_grid, colors=colores_flat)
+            
+            # Debug opcional
+            print(f"Punto graficado: {ix}, {iy} - Color calculado")
