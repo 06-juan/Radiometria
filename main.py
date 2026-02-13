@@ -11,7 +11,7 @@ class MesaXYApp:
 
         # Instancia de la mesa
         try:
-            self.mesa = MesaXY(port='COM6')  # Ajusta el puerto según tu sistema
+            self.mesa = MesaXY(port='COM3')  # Ajusta el puerto según tu sistema
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo inicializar MesaXY:\n{e}")
             self.mesa = None
@@ -43,7 +43,7 @@ class MesaXYApp:
         ttk.Label(frame_sliders, text="Resolución (mm)").pack(anchor="w")
         self.slider_res = tk.Scale(frame_sliders, from_=0.005, to=1, orient="horizontal",
                                    resolution=0.005, length=300)
-        self.slider_res.set(0.01)
+        self.slider_res.set(0.1)
         self.slider_res.pack()
 
         # --- Botones ---
@@ -77,6 +77,7 @@ class MesaXYApp:
                 self.mesa.plot_3d()
             except Exception as e:
                 messagebox.showerror("Error", f"Fallo durante medición:\n{e}")
+
 
     def on_exit(self):
         if self.mesa:

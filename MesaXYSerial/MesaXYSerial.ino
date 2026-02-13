@@ -15,19 +15,19 @@ const float STEPS_PER_MM_Y = 6400.0;
 
 // Parámetros de homing
 const float X_OFFSET_MM = 1.0;
-const float Y_OFFSET_MM = 1.0;
+const float Y_OFFSET_MM = 8.0;
 const int X_HOME_DIR = 1;
 const int Y_HOME_DIR = 1;
-const float COARSE_SPEED_X = 1600.0; // pasos/s
+const float COARSE_SPEED_X = 6400.0; // pasos/s
 const float FINE_SPEED_X = 800.0;   // pasos/s
-const float COARSE_SPEED_Y = 1600.0; // pasos/s
+const float COARSE_SPEED_Y = 6400.0; // pasos/s
 const float FINE_SPEED_Y = 800.0;   // pasos/s
-const float HOME_ACCEL_X = 3200.0;  // pasos/s^2
-const float HOME_ACCEL_Y = 3200.0;  // pasos/s^2
+const float HOME_ACCEL_X = 12800.0;  // pasos/s^2
+const float HOME_ACCEL_Y = 12800.0;  // pasos/s^2
 
 // Configuración inicial de velocidad y aceleración (en pasos/s y pasos/s²)
-const float MAX_SPEED = 1000.0; // Velocidad máxima inicial
-const float ACCELERATION = 6400.0; // Aceleración moderada
+const float MAX_SPEED = 6400.0; // Velocidad máxima inicial
+const float ACCELERATION = 12800.0; // Aceleración moderada
 
 // Direcciones para coordenadas positivas (lejos del home): opuesto al homeDir
 const int POS_DIR_X = -X_HOME_DIR;  // Multiplicador para pasos positivos en X (ajustar si es necesario)

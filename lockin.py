@@ -1,4 +1,23 @@
 import pyvisa
+import time
+
+# Variable global para guardar la amplitud deseada (ej. 2V o 5V)
+LASER_ON_VOLTAGE = 2.5  
+LASER_OFF_VOLTAGE = 1.0 # El SR830 no baja a 0 absoluto, 4mV es el mínimo.
+
+def set_amplitude(voltage, resource_name='GPIB0::8::INSTR'):
+    """Cambia la amplitud del Sine Out del SR830."""
+    rm = pyvisa.ResourceManager()
+    try:
+        inst = rm.open_resource(resource_name)
+        # Comando SLVL establece la amplitud
+        inst.write(f'SLVL {voltage}')
+    except Exception as e:
+        print(f"Error cambiando amplitud: {e}")
+    finally:
+        if 'inst' in locals():
+            inst.close()
+        rm.close()
 
 def get_measurements(resource_name='GPIB0::8::INSTR', timeout=5000):
     """
@@ -22,13 +41,9 @@ def get_measurements(resource_name='GPIB0::8::INSTR', timeout=5000):
         inst = rm.open_resource(resource_name)
         inst.timeout = timeout
         
-        # Verifica conexión
-        idn = inst.query('*IDN?').strip()
-        if 'SR830' not in idn:
-            raise ValueError(f"Instrumento no es SR830. IDN: {idn}")
-        
         # Obtiene X, Y, R, φ en una sola consulta
         snap_response = inst.query('SNAP? 1,2,3,4').strip()
+        print(snap_response)
         values = [float(val) for val in snap_response.split(',')]
         if len(values) != 4:
             raise ValueError(f"Respuesta SNAP inválida: {snap_response}")
