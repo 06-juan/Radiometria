@@ -11,10 +11,11 @@ except ImportError:
     LASER_OFF_VOLTAGE = 1.0
 
 class MesaXY:
-    def __init__(self, port='COM3', baudrate=9600, timeout=60):
+    def __init__(self, port='COM3', baudrate=9600, timeout=5):
+        # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
-        self._abort = False # Bandera de emergencia
-        time.sleep(2)
+        self._abort = False
+        time.sleep(2) # El Arduino se reinicia al conectar
         self._wait_for_ready()
 
     def _wait_for_ready(self):
@@ -22,13 +23,12 @@ class MesaXY:
         while True:
             if self.ser.in_waiting:
                 line = self.ser.readline().decode('utf-8').strip()
-                if line == "READY": 
+                if line in ["READY", "HOMED"]: 
                     return
-                if line == "HOMED":
-                     return
-            if time.time() - start_time > 60: # Timeout corto para init
-                print("timeout")
-                break # A veces el Arduino ya está listo y no envía READY de nuevo
+            
+            # Si pasan 2 segundos y no hay señales de vida...
+            if time.time() - start_time > 2:
+                raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):
         self.ser.write((cmd + "\n").encode('utf-8'))

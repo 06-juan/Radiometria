@@ -6,14 +6,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Importar nuestros módulos
 from graficar import Grafica3DRealTime
-# Intentamos importar MesaXY, si falla (por falta de hardware) avisamos
-try:
-    from mesaxy import MesaXY
-    HARDWARE_AVAILABLE = True
-except Exception as e:
-    print(f"Hardware no detectado o error de importación: {e}")
-    HARDWARE_AVAILABLE = False
-    MesaXY = None
+from mesaxy import MesaXY
 
 class WorkerThread(QThread):
     """Hilo secundario que maneja el bucle de medición para no congelar la GUI"""
@@ -55,6 +48,24 @@ class WorkerThread(QThread):
             self.error_signal.emit(str(e))
         finally:
             self.finished_signal.emit()
+
+class ConnectWorker(QThread):
+    """El mensajero que irá al puerto COM mientras la GUI sigue libre"""
+    success_signal = pyqtSignal(object) # Enviará el objeto 'mesa' si todo sale bien
+    error_signal = pyqtSignal(str)     # Enviará el mensaje de error si falla
+
+    def __init__(self, port):
+        super().__init__()
+        self.port = port
+
+    def run(self):
+        try:
+            # Aquí invocamos a la clase pesada de tu otro archivo
+            # El bloqueo de 'time.sleep' y 'while' ocurrirá AQUÍ, no en la GUI
+            nueva_mesa = MesaXY(port=self.port) 
+            self.success_signal.emit(nueva_mesa)
+        except Exception as e:
+            self.error_signal.emit(str(e))
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -109,6 +120,7 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self.btn_connect)
 
         self.btn_home = QPushButton("2. IR A HOME")
+        self.btn_home.setStyleSheet("background: #FF6900; color: white; padding: 8px; font-weight: bold;")
         self.btn_home.clicked.connect(self.go_home)
         self.btn_home.setEnabled(False)
         ctrl_layout.addWidget(self.btn_home)
@@ -187,21 +199,29 @@ class MainWindow(QMainWindow):
         return slider, line_edit
 
     def connect_hardware(self):
-        if not HARDWARE_AVAILABLE:
-            QMessageBox.critical(self, "Error", "Módulos de hardware no encontrados.")
-            return
+        # 1. Bloqueamos el botón para evitar clics dobles ansiosos
+        self.btn_connect.setEnabled(False)
+        self.btn_connect.setText("CONECTANDO...")
         
-        try:
-            # Aquí ajusta tu puerto COM si es necesario
-            self.mesa = MesaXY(port='COM3') 
-            self.btn_connect.setText("CONECTADO")
-            self.btn_connect.setEnabled(False)
-            self.btn_home.setEnabled(True)
-            self.btn_measure.setEnabled(True)
-            self.btn_stop.setEnabled(True)
-            QMessageBox.information(self, "Info", "Hardware conectado y listo.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error de Conexión", f"No se pudo conectar: {e}")
+        # 2. Creamos al trabajador y conectamos sus "avisos"
+        self.conn_thread = ConnectWorker(port='COM3')
+        self.conn_thread.success_signal.connect(self.on_connection_success)
+        self.conn_thread.error_signal.connect(self.on_connection_error)
+        
+        # 3. ¡A trabajar! (Esto lanza el método run() en paralelo)
+        self.conn_thread.start()
+
+    def on_connection_success(self, mesa_instancia):
+        self.mesa = mesa_instancia # Ya tenemos la estafeta
+        self.btn_connect.setText("CONECTADO")
+        self.btn_home.setEnabled(True)
+        self.btn_measure.setEnabled(True)
+        self.btn_stop.setEnabled(True)
+
+    def on_connection_error(self, error):
+        self.btn_connect.setEnabled(True)
+        self.btn_connect.setText("1. REINTENTAR CONEXIÓN")
+        QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
 
     def go_home(self):
         if self.mesa:
@@ -246,8 +266,6 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(False)
         self.btn_measure.setEnabled(False)
         self.btn_stop.setEnabled(False)
-        
-        QMessageBox.warning(self, "STOP", "Parada de emergencia ejecutada. Puerto cerrado.")
 
     def measurement_finished(self):
         self.toggle_inputs(True)
