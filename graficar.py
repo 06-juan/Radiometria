@@ -77,39 +77,31 @@ class Grafica3DRealTime(QWidget):
         # pero para el inicio sí sirve.
 
     def _dibujar_ejes_enumerados(self, x_max, y_max):
-        # 1. Ejes base (Las líneas de colores: Rojo=X, Verde=Y, Azul=Z)
+        # Ejes base
         axis = gl.GLAxisItem()
+        # Hacemos que el eje Z visualmente tenga una altura similar a X/Y para referencia
         z_height = max(x_max, y_max) * 0.5 
         axis.setSize(x_max, y_max, z_height)
         self.view.addItem(axis)
         self.axes_items.append(axis)
-    
-        # 2. Etiquetas de texto
+
+        # Etiquetas (Grilla de texto)
         pasos = 5
-        color_texto = (255, 255, 255, 255) # Blanco sólido
-        
-        # Elevación mínima para que el plano azul no tape el texto
-        offset_z = 0.1 
-    
-        # EJE X
+        # X
         for i in range(pasos + 1):
             val = (x_max / pasos) * i
-            # Colocamos el texto un poco desplazado en Y para que no choque con la línea
-            t = gl.GLTextItem(pos=(val, -y_max*0.1, offset_z), text=f"{val:.1f}", color=color_texto)
-            # Probamos a escalar el texto si se ve muy pequeño (opcional)
-            # t.scale(0.1, 0.1, 0.1) 
+            t = gl.GLTextItem(pos=(val, -y_max*0.05, 0), text=f"{val:.1f}", color=(100,100,100,100))
             self.view.addItem(t)
             self.axes_items.append(t)
-    
-        # EJE Y
+        # Y
         for i in range(pasos + 1):
             val = (y_max / pasos) * i
-            t = gl.GLTextItem(pos=(-x_max*0.1, val, offset_z), text=f"{val:.1f}", color=color_texto)
+            t = gl.GLTextItem(pos=(-x_max*0.05, val, 0), text=f"{val:.1f}", color=(100,100,100,100))
             self.view.addItem(t)
             self.axes_items.append(t)
             
-        # Etiqueta indicativa para Z
-        t_z = gl.GLTextItem(pos=(0, 0, z_height + 1), text="Z (mm)", color=color_texto)
+        # Etiqueta Z (flotando)
+        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="Z", color=(100,100,100,100))
         self.view.addItem(t_z)
         self.axes_items.append(t_z)
 
