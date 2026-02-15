@@ -29,13 +29,16 @@ class Grafica3DRealTime(QWidget):
         self.mostrar_vista_previa()
 
     def mostrar_vista_previa(self):
-        """Dibuja un escenario 'dummy' de 10x10 para que no se vea negro al inicio."""
-        # Simulamos un área de trabajo de 10x10 mm con resolución baja para visualización
+        x_max = 100.0
+        y_max = 100.0
+        res = 1.0
+        """Dibuja un escenario 'dummy' de 100x100 para que no se vea negro al inicio."""
+        # Simulamos un área de trabajo de 100x100 mm con resolución baja para visualización
         print("Generando vista previa del escenario...")
-        self.inicializar_malla(x_max=10.0, y_max=10.0, res=1.0)
+        self.inicializar_malla(x_max, y_max, res)
         
         # Forzamos una vista de cámara agradable
-        self.view.setCameraPosition(pos=QVector3D(5, 5, 0), distance=30, elevation=30, azimuth=45)
+        self.view.setCameraPosition(pos=QVector3D(x_max/2, y_max/2, 0), distance=x_max*2, elevation=30, azimuth=45)
 
     def inicializar_malla(self, x_max, y_max, res):
         self.x_max = x_max
@@ -88,20 +91,28 @@ class Grafica3DRealTime(QWidget):
         # Etiquetas (Grilla de texto)
         pasos = 5
         # X
+        t_x = gl.GLTextItem(pos=(x_max*1.2, -y_max*0.2, 0), text="X mm", color=(255,255,255,100))
+        self.view.addItem(t_x)
+        self.axes_items.append(t_x)
+
         for i in range(pasos + 1):
             val = (x_max / pasos) * i
-            t = gl.GLTextItem(pos=(val, -y_max*0.05, 0), text=f"{val:.1f}", color=(100,100,100,100))
+            t = gl.GLTextItem(pos=(val, -y_max*0.2, 0), text=f"{val:.1f}", color=(255,255,255,100))
             self.view.addItem(t)
             self.axes_items.append(t)
         # Y
+        t_y = gl.GLTextItem(pos=(-x_max*0.15, y_max * 1.2, 0), text="Y mm", color=(255,255,255,100))
+        self.view.addItem(t_y)
+        self.axes_items.append(t_y)
+
         for i in range(pasos + 1):
             val = (y_max / pasos) * i
-            t = gl.GLTextItem(pos=(-x_max*0.05, val, 0), text=f"{val:.1f}", color=(100,100,100,100))
+            t = gl.GLTextItem(pos=(-x_max*0.15, val, 0), text=f"{val:.1f}", color=(255,255,255,100))
             self.view.addItem(t)
             self.axes_items.append(t)
             
         # Etiqueta Z (flotando)
-        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="Z", color=(100,100,100,100))
+        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R", color=(255,255,255,100))
         self.view.addItem(t_z)
         self.axes_items.append(t_z)
 
