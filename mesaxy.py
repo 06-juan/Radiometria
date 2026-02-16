@@ -2,7 +2,7 @@ import serial
 import time
 # Asegúrate de que lockin.py esté accesible
 try:
-    from lockin import get_measurements, set_amplitude, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
+    from lockin import get_measurements, set_amplitude, set_frequency, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE,error
 except ImportError:
     # MOCK para pruebas si no está el hardware conectado
     def get_measurements(): return {'R': 0.0, 'X':0, 'Y':0, 'phi':0}
@@ -11,7 +11,7 @@ except ImportError:
     LASER_OFF_VOLTAGE = 1.0
 
 class MesaXY:
-    def __init__(self, port='COM3', baudrate=9600, timeout=5):
+    def __init__(self, port='COM5', baudrate=9600, timeout=5):
         # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
@@ -49,6 +49,10 @@ class MesaXY:
         except Exception as e:
             print(f"Error cerrando: {e}")
 
+    def ajustar_frecuencia(self,freq):
+        set_frequency(freq)
+
+
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
         Generador que cede el control (yield) en cada punto.
@@ -68,11 +72,13 @@ class MesaXY:
                 line = self.ser.readline().decode('utf-8').strip()
                 
                 if not line: continue
-
+                
                 if line.startswith("POS"):
                     # Parsear posición
                     _, x_str, y_str = line.split()
                     x, y = float(x_str), float(y_str)
+
+                    print(x,y)
                     
                     # --- SECUENCIA DE MEDICIÓN ---
                     if self._abort: break # Chequeo de última hora

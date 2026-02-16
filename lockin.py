@@ -6,13 +6,36 @@ LASER_OFF_VOLTAGE = 1.0
 
 def set_amplitude(voltage, resource_name='GPIB0::8::INSTR'):
     """Cambia la amplitud del Sine Out del SR830."""
-    rm = pyvisa.ResourceManager()
+    try:
+        rm = pyvisa.ResourceManager()
+    except Exception as e:
+        print(f"Error Conectando con lock-in sr830")
+        return
+
     try:
         inst = rm.open_resource(resource_name)
         # Comando SLVL establece la amplitud
         inst.write(f'SLVL {voltage}')
     except Exception as e:
         print(f"Error cambiando amplitud: {e}")
+    finally:
+        if 'inst' in locals():
+            inst.close()
+        rm.close()
+
+def set_frequency(freq, resource_name='GPIB0::8::INSTR'):
+    """Cambia la frecuencia del oscilador interno del SR830 (Hz)."""
+    try:
+        rm = pyvisa.ResourceManager()
+    except Exception as e:
+        print(f"Error Conectando con lock-in sr830")
+        return
+
+    try:
+        inst = rm.open_resource(resource_name)
+        inst.write(f'FREQ {freq}')
+    except Exception as e:
+        print(f"Error cambiando frecuencia: {e}")
     finally:
         if 'inst' in locals():
             inst.close()
@@ -34,7 +57,11 @@ def get_measurements(resource_name='GPIB0::8::INSTR', timeout=5000):
         if mediciones:
             print(mediciones['R'])
     """
-    rm = pyvisa.ResourceManager('')
+    try:
+        rm = pyvisa.ResourceManager()
+    except Exception as e:
+        print(f"Error Conectando con lock-in sr830")
+        return
     
     try:
         inst = rm.open_resource(resource_name)
