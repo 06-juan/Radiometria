@@ -27,7 +27,6 @@ class WorkerThread(QThread):
             time.sleep(2) # Tiempo para el reinicio del Arduino
             
             if hasattr(self.mesa, 'arduino') and self.mesa.arduino.is_open:
-                # --- LIMPIEZA AGRESIVA ---
                 # Leemos todo lo que haya en el búfer hasta que no quede nada
                 while self.mesa.arduino.in_waiting > 0:
                     self.mesa.arduino.read_all()
@@ -43,11 +42,10 @@ class WorkerThread(QThread):
             # Pasamos un parámetro extra para saber que es un inicio real
             for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res):
                 self.data_signal.emit(x, y, z_data)
+            self.finished_signal.emit()
                 
         except Exception as e:
             self.error_signal.emit(str(e))
-        finally:
-            self.finished_signal.emit()
 
 class ConnectWorker(QThread):
     """El mensajero que irá al puerto COM mientras la GUI sigue libre"""
