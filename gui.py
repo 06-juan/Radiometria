@@ -88,17 +88,17 @@ class MainWindow(QMainWindow):
         # Sliders
         # Eje X: 1.0 a 10.0 mm (Factor 10, 1 decimal)
         self.slider_x, self.input_x = self.crear_control_numerico(
-            ctrl_layout, "X Max (mm)", 10, 100, 50, 10, 1
+            ctrl_layout, "X Max (mm)", 10, 1000, 500, 10, 1
         )
 
         # Eje Y: 1.0 a 10.0 mm (Factor 10, 1 decimal)
         self.slider_y, self.input_y = self.crear_control_numerico(
-            ctrl_layout, "Y Max (mm)", 10, 100, 50, 10, 1
+            ctrl_layout, "Y Max (mm)", 10, 1000, 500, 10, 1
         )
 
         # Resolución: 0.005 a 1.000 mm (Factor 1000, 3 decimales)
         self.slider_res, self.input_res = self.crear_control_numerico(
-            ctrl_layout, "Resolución (mm)", 5, 1000, 500, 1000, 3
+            ctrl_layout, "Resolución (mm)", 5, 1000, 1000, 1000, 3
         )
 
         # frecuencia

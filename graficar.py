@@ -24,21 +24,27 @@ class Grafica3DRealTime(QWidget):
         self.cmap = plt.get_cmap('jet')
         self.z_max_historico = 1.0 
 
-        # --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
         # Al crear la clase, llamamos inmediatamente a la vista previa
         self.mostrar_vista_previa()
 
-    def mostrar_vista_previa(self):
-        x_max = 100.0
-        y_max = 100.0
-        res = 1.0
-        """Dibuja un escenario 'dummy' de 100x100 para que no se vea negro al inicio."""
-        # Simulamos un área de trabajo de 100x100 mm con resolución baja para visualización
-        print("Generando vista previa del escenario...")
-        self.inicializar_malla(x_max, y_max, res)
+    def ajustar_camara(self, x_max, y_max):
+        """Calcula el centro y la distancia óptima dinámicamente."""
+        centro_x = x_max / 2
+        centro_y = y_max / 2
+        # Usamos el lado más largo para determinar la distancia y que nada quede fuera
+        distancia_optima = max(x_max, y_max) * 1.8 
         
-        # Forzamos una vista de cámara agradable
-        self.view.setCameraPosition(pos=QVector3D(x_max/2, y_max/2, 0), distance=x_max*2, elevation=30, azimuth=45)
+        self.view.setCameraPosition(
+            pos=QVector3D(centro_x, centro_y, 0), 
+            distance=distancia_optima, 
+            elevation=30, 
+            azimuth=45
+        )
+
+    def mostrar_vista_previa(self):
+        """Escenario inicial de 100x100."""
+        print("Generando vista previa del escenario...")
+        self.inicializar_malla(100.0, 100.0, 1.0)
 
     def inicializar_malla(self, x_max, y_max, res):
         self.x_max = x_max
@@ -52,6 +58,7 @@ class Grafica3DRealTime(QWidget):
         
         # Matriz Z inicial (Plana)
         self.z_grid = np.zeros((self.ny, self.nx))
+        self.z_max_historico = 1.0 # Reset del histórico para nueva medición
 
         # Limpieza de objetos anteriores
         if self.surface_item:
@@ -76,8 +83,8 @@ class Grafica3DRealTime(QWidget):
         # 2. Dibujar Ejes y Números
         self._dibujar_ejes_enumerados(x_max, y_max)
         
-        # NOTA: No forzamos la cámara aquí si ya estamos en modo interactivo, 
-        # pero para el inicio sí sirve.
+        # Ajustamos la cámara a las nuevas dimensiones (ya sea 100x100 o 10x10)
+        self.ajustar_camara(x_max, y_max)
 
     def _dibujar_ejes_enumerados(self, x_max, y_max):
         # Ejes base
