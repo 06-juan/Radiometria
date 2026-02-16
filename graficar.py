@@ -57,8 +57,12 @@ class Grafica3DRealTime(QWidget):
         self.ys = np.linspace(0, y_max, self.ny)
         
         # Matriz Z inicial (Plana)
+        # 1. Matriz para valores REALES (sin escalar)
+        self.z_raw = np.zeros((self.ny, self.nx))
+        # 2. Matriz para valores VISUALES (escalados para el eje Z)
         self.z_grid = np.zeros((self.ny, self.nx))
-        self.z_max_historico = 1.0 # Reset del histórico para nueva medición
+        
+        self.z_max_historico = 1e-9 # Evitar división por cero
 
         # Limpieza de objetos anteriores
         if self.surface_item:
@@ -126,27 +130,37 @@ class Grafica3DRealTime(QWidget):
     def actualizar_punto(self, x_val, y_val, z_val, res):
         if self.surface_item is None: return
 
-        # Cálculo de índices más robusto
+        # 1. Buscar índices
         ix = int(np.clip(round(x_val / res), 0, self.nx - 1))
         iy = int(np.clip(round(y_val / res), 0, self.ny - 1))
 
-        # --- AUTO-ESCALA VISUAL ---
-        if abs(z_val) > self.z_max_historico:
-            self.z_max_historico = abs(z_val)
+        # 2. Guardar el valor REAL
+        self.z_raw[iy, ix] = z_val
         
-        # Queremos que la altura visual máxima sea proporcional al área XY
-        visual_height_target = (self.x_max + self.y_max) / 2
-        scale = visual_height_target / self.z_max_historico if self.z_max_historico > 1e-9 else 1.0
+        # 3. Actualizar el máximo histórico con el valor real
+        abs_z = abs(z_val)
+        if abs_z > self.z_max_historico:
+            self.z_max_historico = abs_z
 
-        self.z_grid[iy, ix] = z_val * scale
+        # 4. RE-ESCALAR TODA LA MATRIZ VISUAL
+        # Queremos que el punto más alto siempre mida, por ejemplo, el 40% de la base
+        visual_height_target = max(self.x_max, self.y_max) * 0.4
+        scale = visual_height_target / self.z_max_historico
+        
+        # Aplicamos la escala a todos los puntos para que la montaña sea proporcional
+        self.z_grid = self.z_raw * scale
 
-        # Coloreado
-        z_min, z_max = self.z_grid.min(), self.z_grid.max()
+        # 5. Coloreado (usando los datos reales para el color)
+        z_min, z_max = self.z_raw.min(), self.z_raw.max()
         rng = z_max - z_min
+        
         if rng > 1e-9:
-            z_norm = (self.z_grid - z_min) / rng
+            z_norm = (self.z_raw - z_min) / rng
         else:
-            z_norm = np.zeros_like(self.z_grid)
+            z_norm = np.zeros_like(self.z_raw)
 
+        # 6. Actualizar el ítem 3D
         colores = self.cmap(z_norm).reshape(-1, 4)
+        # IMPORTANTE: pyqtgraph a veces espera (nx, ny). 
+        # Si ves la gráfica rotada, usa self.z_grid.T
         self.surface_item.setData(z=self.z_grid, colors=colores)

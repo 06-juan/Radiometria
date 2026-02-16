@@ -103,14 +103,14 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(lbl_title)
         
         # Sliders
-        # Eje X: 1.0 a 10.0 mm (Factor 10, 1 decimal)
+        # Eje X: 1.0 a 10.0 mm (Factor 10, 0 decimal)
         self.slider_x, self.input_x = self.crear_control_numerico(
-            ctrl_layout, "X Max (mm)", 10, 1000, 500, 10, 1
+            ctrl_layout, "X Max (mm)", 10, 100, 50, 10, 0
         )
 
-        # Eje Y: 1.0 a 10.0 mm (Factor 10, 1 decimal)
+        # Eje Y: 1.0 a 10.0 mm (Factor 10, 0 decimal)
         self.slider_y, self.input_y = self.crear_control_numerico(
-            ctrl_layout, "Y Max (mm)", 10, 1000, 500, 10, 1
+            ctrl_layout, "Y Max (mm)", 10, 100, 50, 10, 0
         )
 
         # Resolución: 0.005 a 1.000 mm (Factor 1000, 3 decimales)
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
 
         # frecuencia
         self.slider_freq, self.input_freq = self.crear_control_numerico(
-            ctrl_layout, "frecuencia (Hz)", 1, 1000, 500, 1, 0
+            ctrl_layout, "frecuencia (Hz)", 1, 1000, 1000, 1, 0
         )
 
         ctrl_layout.addSpacing(20) # Un pequeño respiro visual
@@ -216,7 +216,7 @@ class MainWindow(QMainWindow):
         self.btn_connect.setText("CONECTANDO...")
         
         # 2. Creamos al trabajador y conectamos sus "avisos"
-        self.conn_thread = ConnectWorker(port='COM5')
+        self.conn_thread = ConnectWorker(port='COM3')
         self.conn_thread.success_signal.connect(self.on_connection_success)
         self.conn_thread.error_signal.connect(self.on_connection_error)
         
