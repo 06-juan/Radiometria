@@ -10,6 +10,23 @@ from mesaxy import MesaXY
 from data_manager import DataManager
 from lockin import get_measurements, set_frequency
 
+class HomeWorker(QThread):
+    """Hilo para que la mesa busque el origen sin bloquear la GUI"""
+    finished_signal = pyqtSignal()
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, mesa_instance):
+        super().__init__()
+        self.mesa = mesa_instance
+
+    def run(self):
+        try:
+            if self.mesa:
+                self.mesa.home()
+            self.finished_signal.emit()
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
 class WorkerThread(QThread):
     """Hilo secundario que maneja el bucle de medición para no congelar la GUI"""
     data_signal = pyqtSignal(float, float, dict) # Señal: x, y, datos_dict
@@ -219,8 +236,32 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
 
     def go_home(self):
-        if self.mesa:
-            self.mesa.home()
+        """Inicia el proceso de home en segundo plano"""
+        if not self.mesa: return
+
+        # 1. Bloqueamos controles para no mandar comandos contradictorios
+        self.btn_home.setEnabled(False)
+        self.btn_home.setText("YENDO A HOME...")
+        self.btn_measure.setEnabled(False) # No medir mientras se mueve a home
+
+        # 2. Creamos y lanzamos el hilo
+        self.home_thread = HomeWorker(self.mesa)
+        self.home_thread.finished_signal.connect(self.on_home_finished)
+        self.home_thread.error_signal.connect(self.on_home_error)
+        self.home_thread.start()
+
+    def on_home_finished(self):
+        """Se ejecuta cuando la mesa ya está en (0,0)"""
+        self.btn_home.setEnabled(True)
+        self.btn_home.setText("2. IR A HOME")
+        self.btn_measure.setEnabled(True)
+        print("Mesa en posición de origen.")
+
+    def on_home_error(self, error):
+        """Si algo falla durante el movimiento"""
+        self.btn_home.setEnabled(True)
+        self.btn_home.setText("2. IR A HOME")
+        QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
     def start_measurement(self):
         if not self.mesa: return
