@@ -27,7 +27,7 @@ class MesaXY:
                     return
             
             # Si pasan 2 segundos y no hay señales de vida...
-            if time.time() - start_time > 2:
+            if time.time() - start_time > 40:
                 raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):

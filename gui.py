@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
 
         # Título
         lbl_title = QLabel("PARÁMETROS")
-        lbl_title.setStyleSheet("font-weight: bold; font-size: 16px; color: #FFF;")
+        lbl_title.setStyleSheet("font-weight: bold; font-size: 16px; color: #999;")
         ctrl_layout.addWidget(lbl_title)
         
         # Sliders
@@ -253,7 +253,7 @@ class MainWindow(QMainWindow):
     def on_home_finished(self):
         """Se ejecuta cuando la mesa ya está en (0,0)"""
         self.btn_home.setEnabled(True)
-        self.btn_home.setText("2. IR A HOME")
+        self.btn_home.setText("HOMED")
         self.btn_measure.setEnabled(True)
         print("Mesa en posición de origen.")
 
