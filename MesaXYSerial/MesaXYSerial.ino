@@ -1,6 +1,6 @@
 #include <AccelStepper.h>
 
-// --- PINES ---
+// Definición de pines
 #define X_STEP_PIN 2
 #define X_DIR_PIN 5
 #define Y_STEP_PIN 3
@@ -9,207 +9,306 @@
 #define X_LIMIT_PIN 9
 #define Y_LIMIT_PIN 10
 
-// --- CONFIGURACIÓN MECÁNICA ---
-const float STEPS_PER_MM = 6400.0;
+// Configuración de pasos por milímetro (ajustar según hardware)
+const float STEPS_PER_MM_X = 6400.0; // 1/16 microstepping
+const float STEPS_PER_MM_Y = 6400.0;
+
+// Parámetros de homing
+const float X_OFFSET_MM = 1.0;
+const float Y_OFFSET_MM = 8.0;
 const int X_HOME_DIR = 1;
 const int Y_HOME_DIR = 1;
+const float COARSE_SPEED_X = 10000.0; // pasos/s
+const float FINE_SPEED_X = 800.0;   // pasos/s
+const float COARSE_SPEED_Y = 10000.0; // pasos/s
+const float FINE_SPEED_Y = 800.0;   // pasos/s
+const float HOME_ACCEL_X = 20000.0;  // pasos/s^2
+const float HOME_ACCEL_Y = 20000.0;  // pasos/s^2
 
-// --- Configuración de Parámetros ---
-const int VEL_BUSQUEDA = 5000;    // Velocidad rápida
-const int VEL_AJUSTE = 500;      // Velocidad lenta para precisión
-const int PASOS_RETROCESO = 3400; // Un poco de espacio para reintentar
-const long PASOS_OFFSET = 6400;   // Tu configuración de 1.0 mm      
+// Configuración inicial de velocidad y aceleración (en pasos/s y pasos/s²)
+const float MAX_SPEED = 10000.0; // Velocidad máxima inicial
+const float ACCELERATION = 20000.0; // Aceleración moderada
 
-// Velocidades seguras para Arduino Uno (Máx ~4000-5000)
-const float MAX_SPEED_SAFE = 5000.0; 
-const float ACCEL_SAFE = 10000.0;
+// Direcciones para coordenadas positivas (lejos del home): opuesto al homeDir
+const int POS_DIR_X = -X_HOME_DIR;  // Multiplicador para pasos positivos en X (ajustar si es necesario)
+const int POS_DIR_Y = -Y_HOME_DIR;  // Multiplicador para pasos positivos en Y (ajustar si es necesario)
 
+// Instancias de AccelStepper
 AccelStepper stepperX(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);
 AccelStepper stepperY(AccelStepper::DRIVER, Y_STEP_PIN, Y_DIR_PIN);
 
-// --- VARIABLES DE ESTADO ---
+// Variables globales
+float maxSpeed = MAX_SPEED; // Velocidad ajustable
+bool motorsEnabled = false;
 bool waitingForCont = false;
 bool sweepActive = false;
-bool homedOK = false;
-String cmdBuffer = "";
-
-// Variables para el barrido (State Machine)
-float s_xmax, s_ymax, s_res;
-int s_ix = 0, s_iy = 0, s_nx = 0, s_ny = 0;
-bool movingToPoint = false;
+bool homedOK = false; // Estado de homing
 
 void setup() {
   Serial.begin(9600);
   pinMode(ENABLE_PIN, OUTPUT);
   pinMode(X_LIMIT_PIN, INPUT_PULLUP);
   pinMode(Y_LIMIT_PIN, INPUT_PULLUP);
-  digitalWrite(ENABLE_PIN, HIGH); // Apagados al inicio
+  digitalWrite(ENABLE_PIN, HIGH); // Drivers desactivados (ENABLE es activo bajo)
 
-  stepperX.setMaxSpeed(MAX_SPEED_SAFE);
-  stepperX.setAcceleration(ACCEL_SAFE);
-  stepperY.setMaxSpeed(MAX_SPEED_SAFE);
-  stepperY.setAcceleration(ACCEL_SAFE);
+  // Configurar motores
+  stepperX.setMaxSpeed(MAX_SPEED);
+  stepperX.setAcceleration(ACCELERATION);
+  stepperY.setMaxSpeed(MAX_SPEED);
+  stepperY.setAcceleration(ACCELERATION);
 
   delay(500);
-  Serial.println("READY");
+  Serial.println("READY"); // Indicar que el arranque terminó
 }
 
 void loop() {
-  // 1. Leer Serial
-  while (Serial.available() > 0) {
+  static String cmdBuffer = "";
+  if (Serial.available()) {
     char c = Serial.read();
     if (c == '\n') {
       cmdBuffer.trim();
-      if (cmdBuffer.length() > 0) processCommand(cmdBuffer);
+      if (cmdBuffer.length() > 0) {
+        processCommand(cmdBuffer);
+      }
       cmdBuffer = "";
     } else {
       cmdBuffer += c;
     }
   }
 
-  // 2. Lógica del Barrido (Máquina de Estados)
-  if (sweepActive && !waitingForCont) {
-    if (!movingToPoint) {
-      // Calcular siguiente punto
-      if (s_iy >= s_ny) {
-        finishSweep();
-      } else {
-        // Lógica de zigzag
-        int target_ix = (s_iy % 2 == 0) ? s_ix : (s_nx - 1 - s_ix);
-        float tx = target_ix * s_res;
-        float ty = s_iy * s_res;
-        
-        startMoveTo(tx, ty);
-        movingToPoint = true;
-        
-        // Informar a Python
-        Serial.print("POS "); Serial.print(tx, 3); Serial.print(" "); Serial.println(ty, 3);
-      }
-    } else {
-      // Estamos moviéndonos. ¿Ya llegamos?
-      if (stepperX.distanceToGo() == 0 && stepperY.distanceToGo() == 0) {
-        movingToPoint = false;
-        delay(100); // Estabilización
-        Serial.println("LASER");
-        waitingForCont = true; // Pausa hasta que Python diga CONT
-        
-        // Incrementar índices
-        s_ix++;
-        if (s_ix >= s_nx) {
-          s_ix = 0;
-          s_iy++;
-        }
-      }
-    }
+  // Ejecutar movimientos si no está esperando CONT
+  if (!waitingForCont) {
+    stepperX.run();
+    stepperY.run();
   }
-
-  // 3. Ejecutar pasos de motor (SIEMPRE se llama)
-  stepperX.run();
-  stepperY.run();
 }
 
 void processCommand(String cmd) {
-  if (cmd == "CONT") {
-    waitingForCont = false;
-  } 
-  else if (cmd == "ABORT") {
-    finishSweep();
-    stepperX.stop(); stepperY.stop();
-  }
-  else if (cmd == "HOME") {
-    digitalWrite(ENABLE_PIN, LOW);
-    homeAll();
-    Serial.println("HOMED");
-  }
-  else if (cmd.startsWith("SWEEP")) {
-    // Parseo simple
-    int s1 = cmd.indexOf(' ', 6);
-    int s2 = cmd.indexOf(' ', s1 + 1);
-    if (s1 != -1 && s2 != -1) {
-      s_xmax = cmd.substring(6, s1).toFloat();
-      s_ymax = cmd.substring(s1 + 1, s2).toFloat();
-      s_res = cmd.substring(s2 + 1).toFloat();
-      
-      s_nx = (int)(s_xmax / s_res) + 1;
-      s_ny = (int)(s_ymax / s_res) + 1;
-      s_ix = 0; s_iy = 0;
-      sweepActive = true;
-      waitingForCont = false;
-      movingToPoint = false;
+  if (cmd == "PING") {
+    Serial.println("PONG");
+  } else if (cmd == "EN_ON") {
+    digitalWrite(ENABLE_PIN, LOW); // Habilitar drivers
+    motorsEnabled = true;
+    Serial.println("OK");
+  } else if (cmd == "EN_OFF") {
+    digitalWrite(ENABLE_PIN, HIGH); // Deshabilitar drivers
+    motorsEnabled = false;
+    Serial.println("OK");
+  } else if (cmd == "HOME") {
+    if (!motorsEnabled) {
       digitalWrite(ENABLE_PIN, LOW);
-      Serial.println("DBG SWEEP_START");
+      motorsEnabled = true;
+    }
+    homeAll();
+    digitalWrite(ENABLE_PIN, HIGH);
+    motorsEnabled = false;
+    Serial.println("OK");
+  } else if (cmd == "CONT" && waitingForCont) {
+    waitingForCont = false;
+  } else if (cmd == "ABORT" && sweepActive) {
+    sweepActive = false;
+    waitingForCont = false;
+    stepperX.stop();
+    stepperY.stop();
+    Serial.println("OK");
+  } else if (cmd.startsWith("SPEED")) {
+    float speed;
+    if (parseFloat(cmd, 5, speed) && speed > 0) {
+      maxSpeed = speed;
+      stepperX.setMaxSpeed(speed);
+      stepperY.setMaxSpeed(speed);
+      Serial.println("OK");
+    } else {
+      Serial.println("ERR Invalid speed");
+    }
+  } else if (cmd.startsWith("TESTMOVE")) {
+    float x, y;
+    if (parseTwoFloats(cmd, 8, x, y)) {
+      if (!homedOK) {
+        Serial.println("ERR Not homed");
+        return;
+      }
+      moveToMM(x, y);
+      Serial.println("OK");
+    } else {
+      Serial.println("ERR Invalid TESTMOVE parameters");
+    }
+  } else if (cmd.startsWith("SWEEP")) {
+    float x_max, y_max, res;
+    if (parseThreeFloats(cmd, 5, x_max, y_max, res) && x_max > 0 && y_max > 0 && res > 0) {
+      if (!homedOK) {
+        Serial.println("ERR Not homed");
+        return;
+      }
+      if (!motorsEnabled) {
+        digitalWrite(ENABLE_PIN, LOW);
+        motorsEnabled = true;
+      }
+      runSweep(x_max, y_max, res);
+    } else {
+      Serial.println("ERR Invalid SWEEP parameters");
+    }
+  } else {
+    Serial.println("ERR Unknown command");
+  }
+}
+
+bool parseFloat(String line, int start, float &value) {
+  line.remove(0, start);
+  line.trim();
+  value = line.toFloat();
+  return line.length() > 0 && value >= 0;
+}
+
+bool parseTwoFloats(String line, int start, float &x, float &y) {
+  line.remove(0, start);
+  line.trim();
+  int s1 = line.indexOf(' ');
+  if (s1 == -1) return false;
+  x = line.substring(0, s1).toFloat();
+  y = line.substring(s1 + 1).toFloat();
+  return x >= 0 && y >= 0;
+}
+
+bool parseThreeFloats(String line, int start, float &x_max, float &y_max, float &res) {
+  line.remove(0, start);
+  line.trim();
+  int s1 = line.indexOf(' ');
+  int s2 = line.indexOf(' ', s1 + 1);
+  if (s1 == -1 || s2 == -1) return false;
+  x_max = line.substring(0, s1).toFloat();
+  y_max = line.substring(s1 + 1, s2).toFloat();
+  res = line.substring(s2 + 1).toFloat();
+  return x_max > 0 && y_max > 0 && res > 0;
+}
+
+void moveToMM(float x_mm, float y_mm) {
+  long x_steps = (long)(x_mm * STEPS_PER_MM_X * POS_DIR_X);
+  long y_steps = (long)(y_mm * STEPS_PER_MM_Y * POS_DIR_Y);
+  Serial.print("DBG Moving to steps: ");
+  Serial.print(x_steps);
+  Serial.print(", ");
+  Serial.println(y_steps);
+
+  stepperX.moveTo(x_steps);
+  stepperY.moveTo(y_steps);
+
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+    stepperX.run();
+    stepperY.run();
+  }
+}
+
+// Modificación en stepAndPause: El orden de los factores sí altera el producto aquí
+void stepAndPause(float x, float y) {
+  moveToMM(x, y);
+  
+  // 1. Informar posición
+  Serial.print("POS ");
+  Serial.print(x, 3);
+  Serial.print(" ");
+  Serial.println(y, 3);
+
+  // 2. Enviar gatillo para que Python empiece a medir
+  Serial.println("LASER");
+
+  // 3. Bloquear hasta que Python diga "CONT"
+  waitingForCont = true;
+  while (waitingForCont && sweepActive) {
+    if (Serial.available()) {
+      String cmd = Serial.readStringUntil('\n');
+      cmd.trim();
+      processCommand(cmd); // Esto pondrá waitingForCont en false cuando llegue "CONT"
     }
   }
 }
 
-void startMoveTo(float x, float y) {
-  // Invertimos dirección según tu hardware (-1 * steps)
-  stepperX.moveTo((long)(x * STEPS_PER_MM * -X_HOME_DIR));
-  stepperY.moveTo((long)(y * STEPS_PER_MM * -Y_HOME_DIR));
-}
+// Modificación en runSweep: eliminamos el Serial.println("LASER") de aquí
+// porque lo moveremos dentro de stepAndPause para mayor seguridad.
+void runSweep(float x_max, float y_max, float res) {
+  sweepActive = true;
+  int nx = (int)(x_max / res) + 1;
+  int ny = (int)(y_max / res) + 1;
 
-void finishSweep() {
+  for (int j = 0; j < ny && sweepActive; j++) {
+    if (j % 2 == 0) {
+      for (int i = 0; i < nx && sweepActive; i++) {
+        stepAndPause(i * res, j * res);
+      }
+    } else {
+      for (int i = nx - 1; i >= 0 && sweepActive; i--) {
+        stepAndPause(i * res, j * res);
+      }
+    }
+  }
   sweepActive = false;
   waitingForCont = false;
-  Serial.println("OK");
+  Serial.println("OK"); 
+}
+
+void waitUntilDone(AccelStepper &s) {
+  while (s.distanceToGo() != 0) {
+    s.run();
+  }
+}
+
+void homeAxis(AccelStepper &st, int limitPin, float stepsPerMM, float offsetMM,
+              int homeDir, float coarseSpeed, float fineSpeed, float accel) {
+  long oneMM = (long)round(stepsPerMM);
+  long offsetSteps = (long)round(offsetMM * stepsPerMM);
+  int awayDir = -homeDir;
+
+  // Asegurar aceleración
+  st.setAcceleration(accel);
+
+  // 1) Alejar 1 mm para liberar switch
+  st.setMaxSpeed(coarseSpeed);
+  st.move(awayDir * oneMM);
+  waitUntilDone(st);
+  delay(20);
+  Serial.println("DBG Moved away 1 mm");
+
+  // 2) Aproximación rápida
+  st.setMaxSpeed(coarseSpeed);
+  st.move(homeDir * 100000L); // Movimiento largo hacia el switch
+  while (digitalRead(limitPin) == HIGH && st.distanceToGo() != 0) {
+    st.run();
+  }
+  st.stop();
+  waitUntilDone(st);
+  Serial.println("DBG Coarse approach done");
+
+  // 3) Retroceder 1 mm
+  st.setMaxSpeed(coarseSpeed);
+  st.move(awayDir * oneMM * 1.2);
+  waitUntilDone(st);
+  delay(20);
+  Serial.println("DBG Moved back 1 mm");
+
+  // 4) Aproximación fina
+  st.setMaxSpeed(fineSpeed);
+  st.move(homeDir * 100000L);
+  while (digitalRead(limitPin) == HIGH && st.distanceToGo() != 0) {
+    st.run();
+  }
+  st.stop();
+  waitUntilDone(st);
+  Serial.println("DBG Fine approach done");
+
+  // 5) Aplicar offset y fijar cero
+  st.setMaxSpeed(coarseSpeed);
+  st.move(awayDir * offsetSteps);
+  waitUntilDone(st);
+  st.setCurrentPosition(0);
+  Serial.println("DBG Offset applied, position set to 0");
 }
 
 void homeAll() {
-  // --- EJE X ---
-  // 1. Busqueda rápida del switch
-  stepperX.setMaxSpeed(VEL_BUSQUEDA);
-  stepperX.setAcceleration(5000); // Asegura buena respuesta
-  stepperX.moveTo(100000L * X_HOME_DIR);
-  while(digitalRead(X_LIMIT_PIN) == HIGH) stepperX.run();
-  stepperX.stop();
-  
-  // 2. Alejarse un poco para el ajuste fino
-  stepperX.move(-PASOS_RETROCESO * X_HOME_DIR);
-  while(stepperX.distanceToGo() != 0) stepperX.run();
-
-  // 3. Ajuste fino (Velocidad lenta)
-  stepperX.setMaxSpeed(VEL_AJUSTE);
-  stepperX.moveTo(100000L * X_HOME_DIR);
-  while(digitalRead(X_LIMIT_PIN) == HIGH) stepperX.run();
-  stepperX.stop();
-
-  // 4. Moverse al Offset de 1.0mm (6400 pasos)
-  // Cambiamos a velocidad rápida para este movimiento
-  stepperX.setMaxSpeed(VEL_BUSQUEDA);
-  stepperX.move(-PASOS_OFFSET * X_HOME_DIR); 
-  while(stepperX.distanceToGo() != 0) stepperX.run();
-
-  // 5. Establecer este punto como el CERO real
-  stepperX.setCurrentPosition(0);
-
-  // --- EJE Y ---
-  // 1. Busqueda rápida del switch
-  stepperY.setMaxSpeed(VEL_BUSQUEDA);
-  stepperY.setAcceleration(5000);
-  stepperY.moveTo(100000L * Y_HOME_DIR);
-  while(digitalRead(Y_LIMIT_PIN) == HIGH) stepperY.run();
-  stepperY.stop();
-
-  // 2. Alejarse un poco
-  stepperY.move(-PASOS_RETROCESO * Y_HOME_DIR);
-  while(stepperY.distanceToGo() != 0) stepperY.run();
-
-  // 3. Ajuste fino
-  stepperY.setMaxSpeed(VEL_AJUSTE);
-  stepperY.moveTo(100000L * Y_HOME_DIR);
-  while(digitalRead(Y_LIMIT_PIN) == HIGH) stepperY.run();
-  stepperY.stop();
-
-  // 4. Moverse al Offset de 1.0mm (6400 pasos)
-  stepperY.setMaxSpeed(VEL_BUSQUEDA);
-  stepperY.move(-PASOS_OFFSET * Y_HOME_DIR);
-  while(stepperY.distanceToGo() != 0) stepperY.run();
-
-  // 5. Establecer este punto como el CERO real
-  stepperY.setCurrentPosition(0);
-
+  Serial.println("DBG Starting homing");
+  homeAxis(stepperX, X_LIMIT_PIN, STEPS_PER_MM_X, X_OFFSET_MM, X_HOME_DIR,
+           COARSE_SPEED_X, FINE_SPEED_X, HOME_ACCEL_X);
+  homeAxis(stepperY, Y_LIMIT_PIN, STEPS_PER_MM_Y, Y_OFFSET_MM, Y_HOME_DIR,
+           COARSE_SPEED_Y, FINE_SPEED_Y, HOME_ACCEL_Y);
   homedOK = true;
-  // Dejar las velocidades listas para el trabajo normal
-  stepperX.setMaxSpeed(MAX_SPEED_SAFE);
-  stepperY.setMaxSpeed(MAX_SPEED_SAFE);
+  Serial.println("HOMED");
 }

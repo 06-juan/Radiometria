@@ -21,7 +21,7 @@ class Grafica3DRealTime(QWidget):
         # Estado interno
         self.surface_item = None
         self.axes_items = [] 
-        self.cmap = plt.get_cmap('gist_rainbow')
+        self.cmap = plt.get_cmap('jet')
         self.z_max_historico = 1.0 
 
         # Al crear la clase, llamamos inmediatamente a la vista previa
@@ -123,7 +123,7 @@ class Grafica3DRealTime(QWidget):
             self.axes_items.append(t)
             
         # Etiqueta Z (flotando)
-        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R", color=(255,255,255,100))
+        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R µV", color=(255,255,255,100))
         self.view.addItem(t_z)
         self.axes_items.append(t_z)
 
