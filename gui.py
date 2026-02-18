@@ -300,7 +300,7 @@ class MainWindow(QMainWindow):
         """
         # 1. Actualizar Gráfica
         if 'R' in data_dict:
-            self.plotter.actualizar_punto(x, y, data_dict['R'], self.res_actual)
+            self.plotter.actualizar_punto(x, y, data_dict['R'])
         
         # 2. Guardar en DuckDB
         # Pasamos x, y, el diccionario completo y la frecuencia actual
