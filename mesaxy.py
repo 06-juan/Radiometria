@@ -81,7 +81,7 @@ class MesaXY:
                     if self._abort: break
                     
                     # --- SECUENCIA DE MEDICIÓN ---
-                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                    self.ajustar_frecuencia(LASER_ON_VOLTAGE)
                     time.sleep(0.015) # Estabilización
                     
                     z_data = self.lockin.get_measurements()
