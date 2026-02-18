@@ -147,7 +147,7 @@ class Grafica3DRealTime(QWidget):
 
         # Etiqueta Z principal
         self.z_label = gl.GLTextItem(
-            pos=(0, 0, z_height),
+            pos=(0, 0, z_height*1.2),
             text="R (µV)",
             color=(255, 255, 255, 180)
         )
@@ -161,6 +161,32 @@ class Grafica3DRealTime(QWidget):
             self.view.addItem(tick)
             self.axes_items.append(tick)
             self.z_ticks.append(tick)
+
+        # X
+        t_x = gl.GLTextItem(pos=(self.x_max*1.2, -self.y_max*0.2, 0), text="X mm", color=(255,255,255,100))
+        self.view.addItem(t_x)
+        self.axes_items.append(t_x)
+
+        for i in range(pasos + 1):
+            val = (self.x_max / pasos) * i
+            t = gl.GLTextItem(pos=(val, -self.y_max*0.2, 0), text=f"{val:.1f}", color=(255,255,255,100))
+            self.view.addItem(t)
+            self.axes_items.append(t)
+        # Y
+        t_y = gl.GLTextItem(pos=(-self.x_max*0.15, self.y_max * 1.2, 0), text="Y mm", color=(255,255,255,100))
+        self.view.addItem(t_y)
+        self.axes_items.append(t_y)
+
+        for i in range(pasos + 1):
+            val = (self.y_max / pasos) * i
+            t = gl.GLTextItem(pos=(-self.x_max*0.15, val, 0), text=f"{val:.1f}", color=(255,255,255,100))
+            self.view.addItem(t)
+            self.axes_items.append(t)
+            
+        # Etiqueta Z (flotando)
+        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R µV", color=(255,255,255,100))
+        self.view.addItem(t_z)
+        self.axes_items.append(t_z)
 
     def _actualizar_eje_z_visual(self, z_min, z_max):
         visual_height_target = max(self.x_max, self.y_max) * 0.4
