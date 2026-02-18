@@ -1,166 +1,222 @@
+import sys
 import numpy as np
 if not hasattr(np, 'product'):
     np.product = np.prod
 
 import pyqtgraph.opengl as gl
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from PyQt6.QtGui import QVector3D
+from PyQt6.QtCore import QTimer
 import matplotlib.pyplot as plt
+
 
 class Grafica3DRealTime(QWidget):
     def __init__(self):
         super().__init__()
+
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
-        
-        # Configuración de la vista 3D
+
+        # Vista 3D
         self.view = gl.GLViewWidget()
-        self.view.setBackgroundColor('k') 
+        self.view.setBackgroundColor('k')
         self.layout.addWidget(self.view)
 
         # Estado interno
         self.surface_item = None
-        self.axes_items = [] 
+        self.axes_items = []
         self.cmap = plt.get_cmap('jet')
-        self.z_max_historico = 1.0 
 
-        # Al crear la clase, llamamos inmediatamente a la vista previa
+        self.z_max_historico = 1e-9
+        self.z_scale_factor = 1.0
+        self.auto_scale = True
+
         self.mostrar_vista_previa()
 
+    # ---------------------------------------------------------
+    # CONFIGURACIÓN GENERAL
+    # ---------------------------------------------------------
+
     def ajustar_camara(self, x_max, y_max):
-        """Calcula el centro y la distancia óptima dinámicamente."""
         centro_x = x_max / 2
         centro_y = y_max / 2
-        # Usamos el lado más largo para determinar la distancia y que nada quede fuera
-        distancia_optima = max(x_max, y_max) * 1.8 
-        
+        distancia_optima = max(x_max, y_max) * 1.8
+
         self.view.setCameraPosition(
-            pos=QVector3D(centro_x, centro_y, 0), 
-            distance=distancia_optima, 
-            elevation=30, 
+            pos=QVector3D(centro_x, centro_y, 0),
+            distance=distancia_optima,
+            elevation=30,
             azimuth=45
         )
 
     def mostrar_vista_previa(self):
-        """Escenario inicial de 100x100."""
-        print("Generando vista previa del escenario...")
-        self.inicializar_malla(100.0, 100.0, 1.0)
+        self.inicializar_malla(100.0, 100.0, 2.0)
 
     def inicializar_malla(self, x_max, y_max, res):
         self.x_max = x_max
         self.y_max = y_max
+        self.res = res
+
         self.nx = int(x_max / res) + 1
         self.ny = int(y_max / res) + 1
-        
-        # Generar coordenadas
+
         self.xs = np.linspace(0, x_max, self.nx)
         self.ys = np.linspace(0, y_max, self.ny)
-        
-        # Matriz Z inicial (Plana)
-        # 1. Matriz para valores REALES (sin escalar)
-        self.z_raw = np.zeros((self.ny, self.nx))
-        # 2. Matriz para valores VISUALES (escalados para el eje Z)
-        self.z_grid = np.zeros((self.ny, self.nx))
-        
-        self.z_max_historico = 1e-9 # Evitar división por cero
 
-        # Limpieza de objetos anteriores
+        self.z_raw = np.zeros((self.ny, self.nx))
+        self.z_grid = np.zeros((self.ny, self.nx))
+
+        self.z_max_historico = 1e-9
+
         if self.surface_item:
             self.view.removeItem(self.surface_item)
-            self.surface_item = None # Aseguramos referencia nula
-            
+
         for item in self.axes_items:
             self.view.removeItem(item)
         self.axes_items = []
 
-        # 1. Crear Superficie (Inicialmente plana y azul oscuro o con el colormap en 0)
-        # Para que se vea algo, aunque sea plano, usaremos el colormap en el valor min
-        colores = self.cmap(np.zeros_like(self.z_grid))
-        colores_flat = colores.reshape(-1, 4)
+        colores = self.cmap(np.zeros_like(self.z_grid)).reshape(-1, 4)
 
         self.surface_item = gl.GLSurfacePlotItem(
-            x=self.xs, y=self.ys, z=self.z_grid, 
-            colors=colores_flat, shader='shaded', smooth=False
+            x=self.xs,
+            y=self.ys,
+            z=self.z_grid,
+            colors=colores,
+            shader='shaded',
+            smooth=False
         )
+
         self.view.addItem(self.surface_item)
 
-        # 2. Dibujar Ejes y Números
-        self._dibujar_ejes_enumerados(x_max, y_max)
-        
-        # Ajustamos la cámara a las nuevas dimensiones (ya sea 100x100 o 10x10)
+        self._dibujar_ejes_enumerados()
         self.ajustar_camara(x_max, y_max)
 
-    def _dibujar_ejes_enumerados(self, x_max, y_max):
-        # Ejes base
-        axis = gl.GLAxisItem()
-        # Hacemos que el eje Z visualmente tenga una altura similar a X/Y para referencia
-        z_height = max(x_max, y_max) * 0.5 
-        axis.setSize(x_max, y_max, z_height)
-        self.view.addItem(axis)
-        self.axes_items.append(axis)
+    # ---------------------------------------------------------
+    # ESCALADO Z
+    # ---------------------------------------------------------
 
-        # Etiquetas (Grilla de texto)
-        pasos = 5
-        # X
-        t_x = gl.GLTextItem(pos=(x_max*1.2, -y_max*0.2, 0), text="X mm", color=(255,255,255,100))
-        self.view.addItem(t_x)
-        self.axes_items.append(t_x)
+    def set_z_scale(self, factor):
+        self.z_scale_factor = max(factor, 1e-12)
+        self.auto_scale = False
+        self._recalcular_superficie()
 
-        for i in range(pasos + 1):
-            val = (x_max / pasos) * i
-            t = gl.GLTextItem(pos=(val, -y_max*0.2, 0), text=f"{val:.1f}", color=(255,255,255,100))
-            self.view.addItem(t)
-            self.axes_items.append(t)
-        # Y
-        t_y = gl.GLTextItem(pos=(-x_max*0.15, y_max * 1.2, 0), text="Y mm", color=(255,255,255,100))
-        self.view.addItem(t_y)
-        self.axes_items.append(t_y)
+    def set_auto_z_scale(self, enabled=True):
+        self.auto_scale = enabled
+        self._recalcular_superficie()
 
-        for i in range(pasos + 1):
-            val = (y_max / pasos) * i
-            t = gl.GLTextItem(pos=(-x_max*0.15, val, 0), text=f"{val:.1f}", color=(255,255,255,100))
-            self.view.addItem(t)
-            self.axes_items.append(t)
-            
-        # Etiqueta Z (flotando)
-        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R µV", color=(255,255,255,100))
-        self.view.addItem(t_z)
-        self.axes_items.append(t_z)
+    def _recalcular_superficie(self):
+        if self.surface_item is None:
+            return
 
-    def actualizar_punto(self, x_val, y_val, z_val, res):
-        if self.surface_item is None: return
-
-        # 1. Buscar índices
-        ix = int(np.clip(round(x_val / res), 0, self.nx - 1))
-        iy = int(np.clip(round(y_val / res), 0, self.ny - 1))
-
-        # 2. Guardar el valor REAL
-        self.z_raw[iy, ix] = z_val
-        
-        # 3. Actualizar el máximo histórico con el valor real
-        abs_z = abs(z_val)
-        if abs_z > self.z_max_historico:
-            self.z_max_historico = abs_z
-
-        # 4. RE-ESCALAR TODA LA MATRIZ VISUAL
-        # Queremos que el punto más alto siempre mida, por ejemplo, el 40% de la base
         visual_height_target = max(self.x_max, self.y_max) * 0.4
-        scale = visual_height_target / self.z_max_historico
-        
-        # Aplicamos la escala a todos los puntos para que la montaña sea proporcional
+
+        if self.auto_scale:
+            scale = visual_height_target / max(self.z_max_historico, 1e-9)
+        else:
+            scale = self.z_scale_factor
+
         self.z_grid = self.z_raw * scale
 
-        # 5. Coloreado (usando los datos reales para el color)
-        z_min, z_max = self.z_raw.min(), self.z_raw.max()
+        # Normalización color
+        z_min = self.z_raw.min()
+        z_max = self.z_raw.max()
         rng = z_max - z_min
-        
-        if rng > 1e-9:
+
+        if rng > 1e-12:
             z_norm = (self.z_raw - z_min) / rng
         else:
             z_norm = np.zeros_like(self.z_raw)
 
-        # 6. Actualizar el ítem 3D
         colores = self.cmap(z_norm).reshape(-1, 4)
-        # IMPORTANTE: pyqtgraph a veces espera (nx, ny). 
-        # Si ves la gráfica rotada, usa self.z_grid.T
         self.surface_item.setData(z=self.z_grid, colors=colores)
+
+        self._actualizar_eje_z_visual(z_min, z_max)
+
+    # ---------------------------------------------------------
+    # EJE Z CON MAGNITUD REAL
+    # ---------------------------------------------------------
+
+    def _dibujar_ejes_enumerados(self):
+        axis = gl.GLAxisItem()
+        z_height = max(self.x_max, self.y_max) * 0.4
+        axis.setSize(self.x_max, self.y_max, z_height)
+        self.view.addItem(axis)
+        self.axes_items.append(axis)
+
+        pasos = 5
+
+        # Etiqueta Z principal
+        self.z_label = gl.GLTextItem(
+            pos=(0, 0, z_height),
+            text="R (µV)",
+            color=(255, 255, 255, 180)
+        )
+        self.view.addItem(self.z_label)
+        self.axes_items.append(self.z_label)
+
+        # Marcas Z dinámicas
+        self.z_ticks = []
+        for i in range(pasos + 1):
+            tick = gl.GLTextItem(pos=(0, 0, 0), text="", color=(255, 255, 255, 120))
+            self.view.addItem(tick)
+            self.axes_items.append(tick)
+            self.z_ticks.append(tick)
+
+    def _actualizar_eje_z_visual(self, z_min, z_max):
+        visual_height_target = max(self.x_max, self.y_max) * 0.4
+
+        pasos = len(self.z_ticks) - 1
+
+        for i in range(pasos + 1):
+            frac = i / pasos
+            z_real = z_min + frac * (z_max - z_min)
+            z_visual = frac * visual_height_target
+
+            self.z_ticks[i].setData(
+                pos=(0, 0, z_visual),
+                text=f"{z_real*1e6:.2f} µV"
+            )
+
+    # ---------------------------------------------------------
+    # ACTUALIZACIÓN DE DATOS
+    # ---------------------------------------------------------
+
+    def actualizar_punto(self, x_val, y_val, z_val):
+        ix = int(np.clip(round(x_val / self.res), 0, self.nx - 1))
+        iy = int(np.clip(round(y_val / self.res), 0, self.ny - 1))
+
+        self.z_raw[iy, ix] = z_val
+
+        abs_z = abs(z_val)
+        if abs_z > self.z_max_historico:
+            self.z_max_historico = abs_z
+
+        self._recalcular_superficie()
+
+
+# ---------------------------------------------------------
+# PRUEBA AUTOMÁTICA
+# ---------------------------------------------------------
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    ventana = Grafica3DRealTime()
+    ventana.resize(900, 700)
+    ventana.show()
+
+    # Generador de señal tipo onda viajera en microvoltios
+    t = 0
+
+    def actualizar():
+        global t
+        t += 0.1
+        for x in np.linspace(0, ventana.x_max, 10):
+            for y in np.linspace(0, ventana.y_max, 10):
+                z = 5e-6 * np.sin(0.1*x + 0.1*y + t)
+                ventana.actualizar_punto(x, y, z)
+
+    timer = QTimer()
+    timer.timeout.connect(actualizar)
+    timer.start(50)
+
+    sys.exit(app.exec())
