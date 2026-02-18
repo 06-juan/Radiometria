@@ -105,7 +105,6 @@ void processCommand(String cmd) {
     Serial.println("OK");
   } else if (cmd == "CONT" && waitingForCont) {
     waitingForCont = false;
-    Serial.println("DBG CONT received");
   } else if (cmd == "ABORT" && sweepActive) {
     sweepActive = false;
     waitingForCont = false;
@@ -221,10 +220,6 @@ void runSweep(float x_max, float y_max, float res) {
   sweepActive = true;
   int nx = (int)(x_max / res) + 1;
   int ny = (int)(y_max / res) + 1;
-  Serial.print("DBG Sweep points: nx=");
-  Serial.print(nx);
-  Serial.print(", ny=");
-  Serial.println(ny);
 
   for (int j = 0; j < ny && sweepActive; j++) {
     if (j % 2 == 0) {
@@ -236,9 +231,6 @@ void runSweep(float x_max, float y_max, float res) {
         stepAndPause(i * res, j * res);
       }
     }
-  }
-  if (sweepActive) {
-    Serial.println("OK");
   }
   sweepActive = false;
   waitingForCont = false;

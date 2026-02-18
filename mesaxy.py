@@ -2,7 +2,7 @@ import serial
 import time
 # Asegúrate de que lockin.py esté accesible
 try:
-    from lockin import get_measurements, set_amplitude, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
+    from lockin import get_measurements, set_amplitude, set_frequency, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 except ImportError:
     # MOCK para pruebas si no está el hardware conectado
     def get_measurements(): return {'R': 0.0, 'X':0, 'Y':0, 'phi':0}
@@ -26,8 +26,7 @@ class MesaXY:
                 if line in ["READY", "HOMED"]: 
                     return
             
-            # Si pasan 2 segundos y no hay señales de vida...
-            if time.time() - start_time > 2:
+            if time.time() - start_time > 80:
                 raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):
@@ -49,16 +48,21 @@ class MesaXY:
         except Exception as e:
             print(f"Error cerrando: {e}")
 
+    def ajustar_frecuencia(self,freq):
+        set_frequency(freq)
+
+
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
         Generador que cede el control (yield) en cada punto.
         Esto permite que la GUI se actualice y procese el STOP.
         """
+        z_data={}
         self._abort = False
         
         # 1. Asegurar láser APAGADO al inicio
         set_amplitude(LASER_OFF_VOLTAGE)
-        time.sleep(0.1)
+        time.sleep(0.01)
         
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
@@ -68,7 +72,7 @@ class MesaXY:
                 line = self.ser.readline().decode('utf-8').strip()
                 
                 if not line: continue
-
+                
                 if line.startswith("POS"):
                     # Parsear posición
                     _, x_str, y_str = line.split()
@@ -78,10 +82,12 @@ class MesaXY:
                     if self._abort: break # Chequeo de última hora
                     
                     set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(0.1) # Tiempo de estabilización térmica/Lock-in
+                    time.sleep(1.5) # Tiempo de estabilización térmica/Lock-in
                     
                     z_data = get_measurements()
                     
+                    print(x,y, z_data)
+
                     set_amplitude(LASER_OFF_VOLTAGE)
                     
                     # Devolvemos el dato a la GUI
@@ -94,14 +100,8 @@ class MesaXY:
                                     raise RuntimeError(f"Arduino Error: {line}")
                 
                 elif line == "OK":
-                    if len(z_data) > 10: 
-                        print("Barrido terminado legalmente.")
-                        break              
-                    else:
-                        print("Ignorando fin de barrido falso...")
-                        continue
-                
-            
+                    print("Barrido terminado legalmente.")
+                    break
             # Pequeña pausa para no saturar CPU mientras espera serial
             else:
                 time.sleep(0.01)
