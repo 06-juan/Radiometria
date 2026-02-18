@@ -182,11 +182,6 @@ class Grafica3DRealTime(QWidget):
             t = gl.GLTextItem(pos=(-self.x_max*0.15, val, 0), text=f"{val:.1f}", color=(255,255,255,100))
             self.view.addItem(t)
             self.axes_items.append(t)
-            
-        # Etiqueta Z (flotando)
-        t_z = gl.GLTextItem(pos=(0, 0, z_height), text="R µV", color=(255,255,255,100))
-        self.view.addItem(t_z)
-        self.axes_items.append(t_z)
 
     def _actualizar_eje_z_visual(self, z_min, z_max):
         visual_height_target = max(self.x_max, self.y_max) * 0.4
