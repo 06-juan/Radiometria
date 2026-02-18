@@ -199,23 +199,32 @@ void moveToMM(float x_mm, float y_mm) {
   }
 }
 
+// Modificación en stepAndPause: El orden de los factores sí altera el producto aquí
 void stepAndPause(float x, float y) {
   moveToMM(x, y);
+  
+  // 1. Informar posición
   Serial.print("POS ");
   Serial.print(x, 3);
   Serial.print(" ");
   Serial.println(y, 3);
 
+  // 2. Enviar gatillo para que Python empiece a medir
+  Serial.println("LASER");
+
+  // 3. Bloquear hasta que Python diga "CONT"
   waitingForCont = true;
   while (waitingForCont && sweepActive) {
     if (Serial.available()) {
       String cmd = Serial.readStringUntil('\n');
       cmd.trim();
-      processCommand(cmd);
+      processCommand(cmd); // Esto pondrá waitingForCont en false cuando llegue "CONT"
     }
   }
 }
 
+// Modificación en runSweep: eliminamos el Serial.println("LASER") de aquí
+// porque lo moveremos dentro de stepAndPause para mayor seguridad.
 void runSweep(float x_max, float y_max, float res) {
   sweepActive = true;
   int nx = (int)(x_max / res) + 1;
@@ -234,6 +243,7 @@ void runSweep(float x_max, float y_max, float res) {
   }
   sweepActive = false;
   waitingForCont = false;
+  Serial.println("OK"); 
 }
 
 void waitUntilDone(AccelStepper &s) {

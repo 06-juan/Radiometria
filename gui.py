@@ -51,8 +51,6 @@ class WorkerThread(QThread):
         except Exception as e:
             self.error_signal.emit(str(e))
             
-            
-
 class ConnectWorker(QThread):
     """El mensajero que irá al puerto COM mientras la GUI sigue libre"""
     success_signal = pyqtSignal(object) # Enviará el objeto 'mesa' si todo sale bien
@@ -132,7 +130,7 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self.btn_connect)
 
         self.btn_home = QPushButton("2. IR A HOME")
-        self.btn_home.setStyleSheet("background: #FF6900; color: white; padding: 8px; font-weight: bold;")
+        self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_home.clicked.connect(self.go_home)
         self.btn_home.setEnabled(False)
         ctrl_layout.addWidget(self.btn_home)
@@ -214,11 +212,14 @@ class MainWindow(QMainWindow):
         # 1. Bloqueamos el botón para evitar clics dobles ansiosos
         self.btn_connect.setEnabled(False)
         self.btn_connect.setText("CONECTANDO...")
+        self.btn_connect.setStyleSheet("background: #FF6900; color: white; padding: 8px;")
         
         # 2. Creamos al trabajador y conectamos sus "avisos"
         self.conn_thread = ConnectWorker(port='COM3')
         self.conn_thread.success_signal.connect(self.on_connection_success)
         self.conn_thread.error_signal.connect(self.on_connection_error)
+
+        self.btn_stop.setStyleSheet("background: #D32F2F; color: white; padding: 12px; font-weight: bold;")
         
         # 3. ¡A trabajar! (Esto lanza el método run() en paralelo)
         self.conn_thread.start()
@@ -242,6 +243,7 @@ class MainWindow(QMainWindow):
         # 1. Bloqueamos controles para no mandar comandos contradictorios
         self.btn_home.setEnabled(False)
         self.btn_home.setText("YENDO A HOME...")
+        self.btn_home.setStyleSheet("background: #FF6900; color: white; padding: 8px; font-weight: bold;")
         self.btn_measure.setEnabled(False) # No medir mientras se mueve a home
 
         # 2. Creamos y lanzamos el hilo
@@ -264,6 +266,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
     def start_measurement(self):
+        self.btn_measure.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
         if not self.mesa: return
 
         # 1. Configurar Hardware
@@ -312,6 +315,16 @@ class MainWindow(QMainWindow):
             self.mesa = None
         self.btn_connect.setEnabled(True)
         self.toggle_inputs(False)
+        self.btn_stop.setStyleSheet("background: #474B4E; color: white; padding: 12px; font-weight: bold;")
+        self.btn_connect.setText("1. CONECTAR HARDWARE")
+        self.btn_connect.setStyleSheet("background: #2196F3; color: white; padding: 8px;")
+        self.btn_home.setText("2. IR A HOME")
+        self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
+
+        self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
+
+        self.toggle_inputs()
+
 
     def measurement_finished(self):
         self.toggle_inputs(True)

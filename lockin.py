@@ -1,7 +1,7 @@
 import pyvisa
 
 # Variable global para guardar la amplitud deseada (ej. 2.5V o 1V)
-LASER_ON_VOLTAGE = 2.5  
+LASER_ON_VOLTAGE = 5  
 LASER_OFF_VOLTAGE = 1.0 
 
 def set_amplitude(voltage, resource_name='GPIB0::8::INSTR'):
