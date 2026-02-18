@@ -38,7 +38,8 @@ class MesaXY:
         try:
             self.stop_current_operation()
             self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-            self._send_command("EN_OFF") # Apagar motores
+            self.disable() # Apagar motores
+            self.lockin.close()
             time.sleep(0.1)
             if self.ser.is_open:
                 self.ser.close()
@@ -47,7 +48,6 @@ class MesaXY:
 
     def ajustar_frecuencia(self,freq):
         self.lockin.set_frequency(freq)
-
 
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
