@@ -21,7 +21,7 @@ class Grafica3DRealTime(QWidget):
         # Estado interno
         self.surface_item = None
         self.axes_items = [] 
-        self.cmap = plt.get_cmap('jet')
+        self.cmap = plt.get_cmap('gist_rainbow')
         self.z_max_historico = 1.0 
 
         # Al crear la clase, llamamos inmediatamente a la vista previa
