@@ -54,13 +54,13 @@ class MesaXY:
 
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
-        Generador que cede el control (yield) en cada punto.
-        Esto permite que la GUI se actualice y procese el STOP.
+        Generador sincronizado: 
+        1. Recibe posición (POS) -> La guarda.
+        2. Recibe gatillo (LASER) -> Mide y continúa.
         """
-        z_data={}
         self._abort = False
+        current_x, current_y = 0.0, 0.0  # Nuestra "libreta" de coordenadas
         
-        # 1. Asegurar láser APAGADO al inicio
         set_amplitude(LASER_OFF_VOLTAGE)
         time.sleep(0.01)
         
@@ -70,43 +70,44 @@ class MesaXY:
         while not self._abort:
             if self.ser.in_waiting:
                 line = self.ser.readline().decode('utf-8').strip()
-                
                 if not line: continue
                 
+                # A: Actualizar coordenadas en la libreta
                 if line.startswith("POS"):
-                    # Parsear posición
-                    _, x_str, y_str = line.split()
-                    x, y = float(x_str), float(y_str)
+                    try:
+                        _, x_str, y_str = line.split()
+                        current_x, current_y = float(x_str), float(y_str)
+                    except ValueError:
+                        print(f"Error parseando posición: {line}")
+
+                # B: Ejecutar la medición (El "Gatillo")
+                elif line == "LASER":
+                    if self._abort: break
                     
                     # --- SECUENCIA DE MEDICIÓN ---
-                    if self._abort: break # Chequeo de última hora
-                    
                     set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(1.5) # Tiempo de estabilización térmica/Lock-in
+                    time.sleep(1.5) # Estabilización
                     
                     z_data = get_measurements()
+                    print(f"Medido en ({current_x}, {current_y}): {z_data}")
                     
-                    print(x,y, z_data)
-
                     set_amplitude(LASER_OFF_VOLTAGE)
                     
-                    # Devolvemos el dato a la GUI
-                    yield x, y, z_data
+                    # Ceder datos a la GUI
+                    yield current_x, current_y, z_data
                     
-                    # Decirle al Arduino que continúe
+                    # Liberar al Arduino para el siguiente punto
                     self._send_command("CONT")
 
                 elif line.startswith("ERR"):
-                                    raise RuntimeError(f"Arduino Error: {line}")
+                    raise RuntimeError(f"Arduino Error: {line}")
                 
                 elif line == "OK":
-                    print("Barrido terminado legalmente.")
+                    print("Barrido terminado con éxito.")
                     break
-            # Pequeña pausa para no saturar CPU mientras espera serial
             else:
                 time.sleep(0.01)
 
-        # Limpieza final si se salió del loop
         set_amplitude(LASER_OFF_VOLTAGE)
 
     def home(self):
