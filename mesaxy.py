@@ -2,20 +2,17 @@ import serial
 import time
 # Asegúrate de que lockin.py esté accesible
 try:
-    from lockin import get_measurements, set_amplitude, set_frequency, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
+    from lockin import SR830, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 except ImportError:
-    # MOCK para pruebas si no está el hardware conectado
-    def get_measurements(): return {'R': 0.0, 'X':0, 'Y':0, 'phi':0}
-    def set_amplitude(v): pass
-    LASER_ON_VOLTAGE = 2.5
-    LASER_OFF_VOLTAGE = 1.0
+    print("error con el lockin")
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
+        self.lockin = SR830()
         # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
-        time.sleep(2) # El Arduino se reinicia al conectar
+        time.sleep(1) # El Arduino se reinicia al conectar
         self._wait_for_ready()
 
     def _wait_for_ready(self):
@@ -40,8 +37,9 @@ class MesaXY:
         """Secuencia de apagado seguro"""
         try:
             self.stop_current_operation()
-            set_amplitude(LASER_OFF_VOLTAGE)
-            self._send_command("EN_OFF") # Apagar motores
+            self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+            self.disable() # Apagar motores
+            self.lockin.close()
             time.sleep(0.1)
             if self.ser.is_open:
                 self.ser.close()
@@ -49,8 +47,7 @@ class MesaXY:
             print(f"Error cerrando: {e}")
 
     def ajustar_frecuencia(self,freq):
-        set_frequency(freq)
-
+        self.lockin.set_frequency(freq)
 
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
@@ -61,8 +58,7 @@ class MesaXY:
         self._abort = False
         current_x, current_y = 0.0, 0.0  # Nuestra "libreta" de coordenadas
         
-        set_amplitude(LASER_OFF_VOLTAGE)
-        time.sleep(0.01)
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
@@ -85,13 +81,13 @@ class MesaXY:
                     if self._abort: break
                     
                     # --- SECUENCIA DE MEDICIÓN ---
-                    set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(0.5) # Estabilización tau*5
+                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                    time.sleep(0.015) # Estabilización
                     
-                    z_data = get_measurements()
+                    z_data = self.lockin.get_measurements()
                     print(f"Medido en ({current_x}, {current_y}): {z_data}")
                     
-                    set_amplitude(LASER_OFF_VOLTAGE)
+                    self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
                     
                     # Ceder datos a la GUI
                     yield current_x, current_y, z_data
@@ -108,7 +104,7 @@ class MesaXY:
             else:
                 time.sleep(0.01)
 
-        set_amplitude(LASER_OFF_VOLTAGE)
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
     def home(self):
         self._send_command("HOME")

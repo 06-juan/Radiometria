@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from graficar import Grafica3DRealTime
 from mesaxy import MesaXY
 from data_manager import DataManager
-from lockin import get_measurements, set_frequency
+
 
 class HomeWorker(QThread):
     """Hilo para que la mesa busque el origen sin bloquear la GUI"""
@@ -270,10 +270,9 @@ class MainWindow(QMainWindow):
         if not self.mesa: return
 
         # 1. Configurar Hardware
-        # CORRECCIÓN: Llamamos a lockin.set_frequency, no a mesa.ajustar...
         self.current_freq = self.slider_freq.value()
         print(f"Configurando Lock-in a {self.current_freq} Hz...")
-        set_frequency(self.current_freq) 
+        self.mesa.ajustar_frecuencia(self.current_freq)
         
         # 2. Preparar Base de Datos
         exp_id = self.db.iniciar_nuevo_experimento()
@@ -300,7 +299,7 @@ class MainWindow(QMainWindow):
         """
         # 1. Actualizar Gráfica
         if 'R' in data_dict:
-            self.plotter.actualizar_punto(x, y, data_dict['R'], self.res_actual)
+            self.plotter.actualizar_punto(x, y, data_dict['R'])
         
         # 2. Guardar en DuckDB
         # Pasamos x, y, el diccionario completo y la frecuencia actual
@@ -323,7 +322,7 @@ class MainWindow(QMainWindow):
 
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
 
-        self.toggle_inputs()
+        self.toggle_inputs(True)
 
 
     def measurement_finished(self):
