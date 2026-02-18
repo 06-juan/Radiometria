@@ -7,7 +7,7 @@ except ImportError:
     # MOCK para pruebas si no está el hardware conectado
     def get_measurements(): return {'R': 0.0, 'X':0, 'Y':0, 'phi':0}
     def set_amplitude(v): pass
-    LASER_ON_VOLTAGE = 2.5
+    LASER_ON_VOLTAGE = 5
     LASER_OFF_VOLTAGE = 1.0
 
 class MesaXY:
@@ -15,7 +15,7 @@ class MesaXY:
         # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
-        time.sleep(2) # El Arduino se reinicia al conectar
+        time.sleep(1) # El Arduino se reinicia al conectar
         self._wait_for_ready()
 
     def _wait_for_ready(self):
@@ -62,7 +62,6 @@ class MesaXY:
         current_x, current_y = 0.0, 0.0  # Nuestra "libreta" de coordenadas
         
         set_amplitude(LASER_OFF_VOLTAGE)
-        time.sleep(0.01)
         
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
@@ -86,7 +85,7 @@ class MesaXY:
                     
                     # --- SECUENCIA DE MEDICIÓN ---
                     set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(0.5) # Estabilización tau*5
+                    time.sleep(0.015) # Estabilización
                     
                     z_data = get_measurements()
                     print(f"Medido en ({current_x}, {current_y}): {z_data}")
