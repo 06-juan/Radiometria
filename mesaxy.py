@@ -85,7 +85,7 @@ class MesaXY:
                     
                     # --- SECUENCIA DE MEDICIÓN ---
                     set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(0.015) # Estabilización
+                    time.sleep(2.1) # Estabilización
                     
                     z_data = get_measurements()
                     print(f"Medido en ({current_x}, {current_y}): {z_data}")

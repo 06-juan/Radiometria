@@ -274,6 +274,8 @@ class MainWindow(QMainWindow):
 
     def start_measurement(self):
         self.btn_measure.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
+        self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
+        self.btn_home.setText("2. IR A HOME")
         if not self.mesa: return
 
         # 1. Configurar Hardware
@@ -325,6 +327,7 @@ class MainWindow(QMainWindow):
             self.mesa.stop_current_operation()
             self.worker.wait()
         if self.mesa:
+            self.mesa.disable()
             self.mesa.close()
             self.mesa = None
         self.btn_connect.setEnabled(True)
