@@ -151,8 +151,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(controls_panel)
 
         # --- PANEL DERECHO (Gráfica 3D) ---
-        self.plotter = Grafica3DRealTime()
-        layout.addWidget(self.plotter)
+        # Instanciamos ambas gráficas. Al agregarlas al QHBoxLayout, 
+        # la primera que agreguemos quedará a la izquierda de la segunda.
+        
+        self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")  # Gráfica para la Fase
+        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")   # Gráfica para la Magnitud R
+
+        # Agregamos primero la fase (queda a la izquierda) y luego magnitud (a la derecha)
+        layout.addWidget(self.plotter_fase)
+        layout.addWidget(self.plotter_mag)
 
     def crear_slider(self, min_v, max_v, init_v, func):
         s = QSlider(Qt.Orientation.Horizontal)
@@ -279,11 +286,14 @@ class MainWindow(QMainWindow):
         exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Iniciando guardado de datos en ID: {exp_id}")
 
-        # 3. Preparar Gráfica
+        # 3. Preparar Gráficas
         self.res_actual = self.slider_res.value() / 1000.0
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
-        self.plotter.inicializar_malla(x_max, y_max, self.res_actual)
+        
+        # Inicializamos ambas mallas
+        self.plotter_fase.inicializar_malla(x_max, y_max, self.res_actual)
+        self.plotter_mag.inicializar_malla(x_max, y_max, self.res_actual)
 
         # 4. Iniciar Worker
         self.toggle_inputs(False)
@@ -298,9 +308,13 @@ class MainWindow(QMainWindow):
         Este método se ejecuta cada vez que el Arduino/Lockin escupen un dato.
         Aquí graficamos Y GUARDAMOS.
         """
-        # 1. Actualizar Gráfica
+        # 1. Actualizar Gráficas
         if 'R' in data_dict:
-            self.plotter.actualizar_punto(x, y, data_dict['R'])
+            self.plotter_mag.actualizar_punto(x, y, data_dict['R'])
+            
+        # Reemplaza 'Theta' por la clave exacta que uses en tu diccionario para la fase
+        if 'phi' in data_dict: 
+            self.plotter_fase.actualizar_punto(x, y, data_dict['phi'])
         
         # 2. Guardar en DuckDB
         # Pasamos x, y, el diccionario completo y la frecuencia actual
@@ -323,7 +337,7 @@ class MainWindow(QMainWindow):
 
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
 
-        self.toggle_inputs()
+        self.toggle_inputs(True)
 
 
     def measurement_finished(self):
