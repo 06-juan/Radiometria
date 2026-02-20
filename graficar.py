@@ -6,7 +6,7 @@ if not hasattr(np, 'product'):
 import pyqtgraph.opengl as gl
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from PyQt6.QtGui import QVector3D, QFont
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QEvent, Qt
 import matplotlib.pyplot as plt
 
 
@@ -38,8 +38,11 @@ class Grafica3DRealTime(QWidget):
         self.z_max_historico = 1e-9
         self.z_scale_factor = 1.0
         self.auto_scale = True
+        self._z_scale_dragging = False
+        self._z_scale_last_y = 0
 
         self.mostrar_vista_previa()
+        self.view.installEventFilter(self)
 
     # ---------------------------------------------------------
     # CONFIGURACIÓN GENERAL
@@ -112,23 +115,25 @@ class Grafica3DRealTime(QWidget):
         self.auto_scale = enabled
         self._recalcular_superficie()
 
+    def _es_fase(self):
+        """Indica si la gráfica muestra fase (soporta valores negativos)."""
+        return "°" in self.titulo_z_texto or "Fase" in self.titulo_z_texto.lower()
+
     def _recalcular_superficie(self):
         if self.surface_item is None:
             return
 
         visual_height_target = max(self.x_max, self.y_max) * 0.4
+        z_min = self.z_raw.min()
+        z_max = self.z_raw.max()
+        rng = max(z_max - z_min, 1e-12)
 
         if self.auto_scale:
-            scale = visual_height_target / max(self.z_max_historico, 1e-9)
+            scale = visual_height_target / rng
         else:
             scale = self.z_scale_factor
 
-        self.z_grid = self.z_raw * scale
-
-        # Normalización color
-        z_min = self.z_raw.min()
-        z_max = self.z_raw.max()
-        rng = z_max - z_min
+        self.z_grid = (self.z_raw - z_min) * scale
 
         if rng > 1e-12:
             z_norm = (self.z_raw - z_min) / rng
@@ -138,7 +143,9 @@ class Grafica3DRealTime(QWidget):
         colores = self.cmap(z_norm).reshape(-1, 4)
         self.surface_item.setData(z=self.z_grid, colors=colores)
 
-        self._actualizar_eje_z_visual(z_min, z_max)
+        z_visual_range = max(float(np.ptp(self.z_grid)), 0.01)
+        self._actualizar_eje_z_visual(z_min, z_max, z_visual_range)
+        self.view.update()
 
     # ---------------------------------------------------------
     # EJE Z CON MAGNITUD REAL
@@ -223,22 +230,58 @@ class Grafica3DRealTime(QWidget):
             self.view.addItem(t)
             self.axes_items.append(t)
 
-    def _actualizar_eje_z_visual(self, z_min, z_max):
-        visual_height_target = max(self.x_max, self.y_max) * 0.4
+    def _actualizar_eje_z_visual(self, z_min, z_max, z_visual_range=None):
+        if z_visual_range is None:
+            z_visual_range = max(self.x_max, self.y_max) * 0.4
         pasos = len(self.z_ticks) - 1
 
         for i in range(pasos + 1):
             frac = i / pasos
             z_real = z_min + frac * (z_max - z_min)
-            z_visual = frac * visual_height_target
+            z_visual = frac * z_visual_range
 
-            # Formateo dinámico según el título
             if "µV" in self.titulo_z_texto:
                 texto_tick = f"{z_real*1e6:.2f} µV"
             else:
                 texto_tick = f"{z_real:.1f}°"
 
             self.z_ticks[i].setData(pos=(0, 0, z_visual), text=texto_tick)
+
+        if self.axes_items:
+            self.axes_items[0].setSize(self.x_max, self.y_max, z_visual_range)
+        if len(self.axes_items) > 1:
+            self.z_label.setData(pos=(0, 0, z_visual_range * 1.2), text=self.titulo_z_texto)
+
+    def eventFilter(self, obj, event):
+        """Arrastrar con botón derecho para ajustar la escala del eje Z."""
+        if obj != self.view:
+            return False
+
+        t = event.type()
+        if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
+            self._z_scale_dragging = True
+            self._z_scale_last_y = event.position().y() if hasattr(event, 'position') else event.pos().y()
+            return True
+        if t == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.RightButton:
+            self._z_scale_dragging = False
+            return True
+        if t == QEvent.Type.MouseMove and self._z_scale_dragging:
+            visual_height_target = max(self.x_max, self.y_max) * 0.4
+            if self.auto_scale:
+                z_min = self.z_raw.min()
+                z_max = self.z_raw.max()
+                rng = max(z_max - z_min, 1e-12)
+                self.z_scale_factor = visual_height_target / rng
+            py = event.position().y() if hasattr(event, 'position') else event.pos().y()
+            dy = self._z_scale_last_y - py  # Arriba = aumentar escala
+            self._z_scale_last_y = py
+            factor = 1.0 + dy * 0.008
+            self.z_scale_factor *= max(0.5, min(2.0, factor))
+            self.z_scale_factor = max(1e-6, min(1e12, self.z_scale_factor))
+            self.auto_scale = False
+            self._recalcular_superficie()
+            return True
+        return False
 
     # ---------------------------------------------------------
     # ACTUALIZACIÓN DE DATOS
@@ -254,6 +297,19 @@ class Grafica3DRealTime(QWidget):
         if abs_z > self.z_max_historico:
             self.z_max_historico = abs_z
 
+        self._recalcular_superficie()
+
+    def cargar_datos_completos(self, x_max, y_max, res, z_grid):
+        """
+        Carga una malla completa de datos (para visualizar mediciones guardadas).
+        Resetea la escala al valor estándar (autoescala) como al iniciar una medición.
+        """
+        self.inicializar_malla(x_max, y_max, res)
+        self.z_raw = np.asarray(z_grid, dtype=float).copy()
+        abs_z = np.abs(self.z_raw)
+        self.z_max_historico = max(abs_z.max(), 1e-9)
+        self.auto_scale = True
+        self.z_scale_factor = 1.0
         self._recalcular_superficie()
 
 

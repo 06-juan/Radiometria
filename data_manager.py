@@ -1,4 +1,5 @@
 import duckdb
+import json
 from datetime import datetime
 import os
 
@@ -77,6 +78,134 @@ class DataManager:
             self.conn.execute(query, params)
         except Exception as e:
             print(f"Error guardando en DB: {e}")
+
+    def listar_mediciones(self):
+        """
+        Devuelve lista de (experiment_id, timestamp, n_puntos) ordenada por timestamp descendente.
+        Útil para poblar un menú desplegable de mediciones disponibles.
+        """
+        try:
+            result = self.conn.execute("""
+                SELECT experiment_id, MIN(timestamp) as fecha, COUNT(*) as n_puntos
+                FROM mediciones
+                GROUP BY experiment_id
+                ORDER BY fecha DESC
+            """).fetchall()
+            return result
+        except Exception as e:
+            print(f"Error listando mediciones: {e}")
+            return []
+
+    def cargar_medicion(self, experiment_id):
+        """
+        Carga todos los puntos de una medición.
+        Devuelve dict con: x_max, y_max, res, xs, ys, z_mag (2D), z_fase (2D)
+        para visualizar en las gráficas 3D.
+        """
+        try:
+            rows = self.conn.execute("""
+                SELECT x_pos, y_pos, magnitude_r, phase_phi
+                FROM mediciones
+                WHERE experiment_id = ?
+                ORDER BY y_pos ASC, x_pos ASC
+            """, [experiment_id]).fetchall()
+
+            if not rows:
+                return None
+
+            import numpy as np
+            x_vals = np.array([r[0] for r in rows])
+            y_vals = np.array([r[1] for r in rows])
+            r_vals = np.array([r[2] for r in rows])
+            phi_vals = np.array([r[3] for r in rows])
+
+            x_unique = np.unique(x_vals)
+            y_unique = np.unique(y_vals)
+
+            if len(x_unique) < 2:
+                dx = 0.001
+            else:
+                dx = float(np.diff(x_unique).min())
+            if len(y_unique) < 2:
+                dy = 0.001
+            else:
+                dy = float(np.diff(y_unique).min())
+            res = min(dx, dy)
+            x_max = float(x_vals.max())
+            y_max = float(y_vals.max())
+
+            nx = int(x_max / res) + 1
+            ny = int(y_max / res) + 1
+
+            z_mag = np.zeros((ny, nx))
+            z_fase = np.zeros((ny, nx))
+            z_mag.fill(np.nan)
+            z_fase.fill(np.nan)
+
+            for i, (x, y, r, phi) in enumerate(zip(x_vals, y_vals, r_vals, phi_vals)):
+                ix = int(np.clip(round(x / res), 0, nx - 1))
+                iy = int(np.clip(round(y / res), 0, ny - 1))
+                z_mag[iy, ix] = r
+                z_fase[iy, ix] = phi
+
+            z_mag = np.nan_to_num(z_mag, nan=0.0)
+            z_fase = np.nan_to_num(z_fase, nan=0.0)
+
+            return {
+                "x_max": x_max,
+                "y_max": y_max,
+                "res": res,
+                "xs": np.linspace(0, x_max, nx),
+                "ys": np.linspace(0, y_max, ny),
+                "z_mag": z_mag,
+                "z_fase": z_fase,
+            }
+        except Exception as e:
+            print(f"Error cargando medición {experiment_id}: {e}")
+            return None
+
+    def _ruta_aliases(self):
+        return os.path.join(self.folder, "aliases.json")
+
+    def obtener_alias(self, experiment_id):
+        """Devuelve el alias de una medición, o None si no existe."""
+        path = self._ruta_aliases()
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                aliases = json.load(f)
+            return aliases.get(experiment_id)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def guardar_alias(self, experiment_id, alias):
+        """Guarda un alias (seudónimo) para una medición."""
+        path = self._ruta_aliases()
+        aliases = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    aliases = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+        alias_limpio = (alias or "").strip()
+        if alias_limpio:
+            aliases[experiment_id] = alias_limpio
+        else:
+            aliases.pop(experiment_id, None)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(aliases, f, indent=2, ensure_ascii=False)
+
+    def eliminar_medicion(self, experiment_id):
+        """Elimina todos los datos de una medición de la base de datos."""
+        try:
+            self.conn.execute("DELETE FROM mediciones WHERE experiment_id = ?", [experiment_id])
+            self.guardar_alias(experiment_id, "")
+            return True
+        except Exception as e:
+            print(f"Error eliminando medición {experiment_id}: {e}")
+            return False
 
     def cerrar(self):
         if self.conn:

@@ -1,7 +1,7 @@
 import sys
 import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit)
+                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit, QComboBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Importar nuestros módulos
@@ -78,9 +78,10 @@ class MainWindow(QMainWindow):
         self.mesa = None
         self.worker = None
         
-        # Inicializamos la Base de Datos
-        self.db = DataManager() # <--- NUEVO: El archivista está listo
-        self.current_freq = 0.0 # Variable para recordar la frecuencia actual
+        # Inicializamos la Base de Datos (guardado en carpeta data)
+        self.db = DataManager()
+        self.db_viewer = DataManager(folder="data")
+        self.current_freq = 0.0
 
         self.init_ui()
 
@@ -147,6 +148,39 @@ class MainWindow(QMainWindow):
         self.btn_stop.clicked.connect(self.emergency_stop)
         self.btn_stop.setEnabled(False)
         ctrl_layout.addWidget(self.btn_stop)
+
+        # --- VISUALIZAR MEDICIONES GUARDADAS ---
+        ctrl_layout.addSpacing(20)
+        lbl_vis = QLabel("VISUALIZAR MEDICIÓN")
+        lbl_vis.setStyleSheet("font-weight: bold; font-size: 14px; color: #999;")
+        ctrl_layout.addWidget(lbl_vis)
+
+        self.combo_mediciones = QComboBox()
+        self.combo_mediciones.setMinimumWidth(220)
+        self.combo_mediciones.addItem("— Seleccionar —", None)
+        self.combo_mediciones.currentIndexChanged.connect(self._al_cambiar_medicion_combo)
+        ctrl_layout.addWidget(self.combo_mediciones)
+
+        row_alias = QHBoxLayout()
+        self.input_alias = QLineEdit()
+        self.input_alias.setPlaceholderText("Pseudónimo para la medición...")
+        row_alias.addWidget(self.input_alias, 1)
+        self.btn_renombrar = QPushButton("Renombrar")
+        self.btn_renombrar.setStyleSheet("background: #607D8B; color: white; padding: 6px;")
+        self.btn_renombrar.clicked.connect(self._renombrar_medicion)
+        row_alias.addWidget(self.btn_renombrar, 1)
+        self.btn_borrar = QPushButton("Borrar")
+        self.btn_borrar.setStyleSheet("background: #D32F2F; color: white; padding: 6px; font-size: 11px;")
+        self.btn_borrar.clicked.connect(self._borrar_medicion)
+        row_alias.addWidget(self.btn_borrar)
+        ctrl_layout.addLayout(row_alias)
+
+        self._refrescar_combo_mediciones()
+
+        self.btn_visualizar = QPushButton("CARGAR Y VISUALIZAR")
+        self.btn_visualizar.setStyleSheet("background: #9C27B0; color: white; padding: 8px;")
+        self.btn_visualizar.clicked.connect(self.visualizar_medicion_seleccionada)
+        ctrl_layout.addWidget(self.btn_visualizar)
 
         layout.addWidget(controls_panel)
 
@@ -341,6 +375,7 @@ class MainWindow(QMainWindow):
 
     def measurement_finished(self):
         self.toggle_inputs(True)
+        self._refrescar_combo_mediciones()
         QMessageBox.information(self, "Fin", "Barrido completado y datos guardados.")
 
     def measurement_error(self, err_msg):
@@ -351,13 +386,102 @@ class MainWindow(QMainWindow):
         self.slider_x.setEnabled(enable)
         self.slider_y.setEnabled(enable)
         self.slider_res.setEnabled(enable)
-        self.slider_freq.setEnabled(enable) # Bloqueamos frecuencia también
+        self.slider_freq.setEnabled(enable)
         self.btn_home.setEnabled(enable)
         self.btn_measure.setEnabled(enable)
 
+    def _refrescar_combo_mediciones(self):
+        """Recarga el listado de mediciones disponibles en el combo."""
+        self.combo_mediciones.blockSignals(True)
+        self.combo_mediciones.clear()
+        self.combo_mediciones.addItem("— Seleccionar —", None)
+
+        def _texto_item(exp_id, fecha, n_puntos):
+            alias = self.db_viewer.obtener_alias(exp_id)
+            fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
+            base = f"{exp_id} ({fecha_str}, {n_puntos} pts)"
+            return f"{alias} — {base}" if alias else base
+
+        mediciones = self.db_viewer.listar_mediciones()
+        for exp_id, fecha, n_puntos in mediciones:
+            self.combo_mediciones.addItem(_texto_item(exp_id, fecha, n_puntos), exp_id)
+        for exp_id, fecha, n_puntos in self.db.listar_mediciones():
+            ids_actuales = [self.combo_mediciones.itemData(i) for i in range(1, self.combo_mediciones.count())]
+            if exp_id not in ids_actuales:
+                self.combo_mediciones.addItem(_texto_item(exp_id, fecha, n_puntos), exp_id)
+        self.combo_mediciones.blockSignals(False)
+        self._al_cambiar_medicion_combo()
+
+    def _al_cambiar_medicion_combo(self):
+        """Actualiza el campo de alias al cambiar la medición seleccionada."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            self.input_alias.clear()
+            return
+        alias = self.db_viewer.obtener_alias(exp_id)
+        self.input_alias.setText(alias or "")
+
+    def _renombrar_medicion(self):
+        """Guarda el alias (seudónimo) de la medición seleccionada."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Renombrar", "Selecciona primero una medición.")
+            return
+        alias = self.input_alias.text().strip()
+        self.db_viewer.guardar_alias(exp_id, alias)
+        self._refrescar_combo_mediciones()
+        idx = self.combo_mediciones.findData(exp_id)
+        if idx >= 0:
+            self.combo_mediciones.setCurrentIndex(idx)
+        QMessageBox.information(self, "Renombrar", f"Pseudónimo guardado." if alias else "Pseudónimo eliminado.")
+
+    def _borrar_medicion(self):
+        """Elimina la medición seleccionada tras confirmación."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Borrar", "Selecciona primero una medición.")
+            return
+        resp = QMessageBox.question(
+            self, "Borrar medición", "¿Desea borrar los datos de esta medición?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel
+        )
+        if resp != QMessageBox.StandardButton.Ok:
+            return
+        ok1 = self.db_viewer.eliminar_medicion(exp_id)
+        ok2 = self.db.eliminar_medicion(exp_id)
+        if ok1 or ok2:
+            self._refrescar_combo_mediciones()
+            QMessageBox.information(self, "Borrar", "Medición eliminada.")
+        else:
+            QMessageBox.warning(self, "Borrar", "No se pudo eliminar la medición.")
+
+    def visualizar_medicion_seleccionada(self):
+        """Carga la medición seleccionada y la muestra en las gráficas 3D."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Visualizar", "Selecciona una medición del menú.")
+            return
+
+        data = self.db_viewer.cargar_medicion(exp_id)
+        if data is None:
+            data = self.db.cargar_medicion(exp_id)
+        if data is None:
+            QMessageBox.warning(self, "Error", f"No se pudo cargar la medición {exp_id}")
+            return
+
+        self.plotter_mag.cargar_datos_completos(
+            data["x_max"], data["y_max"], data["res"], data["z_mag"]
+        )
+        self.plotter_fase.cargar_datos_completos(
+            data["x_max"], data["y_max"], data["res"], data["z_fase"]
+        )
+        QMessageBox.information(self, "Visualizar", f"Medición {exp_id} cargada correctamente.")
+
     def closeEvent(self, event):
         self.emergency_stop()
-        self.db.cerrar() # Cerramos la BD al salir
+        self.db.cerrar()
+        self.db_viewer.cerrar()
         event.accept()
 
 if __name__ == "__main__":
