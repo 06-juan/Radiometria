@@ -1,14 +1,14 @@
 import sys
 import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit)
+                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit, QComboBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Importar nuestros módulos
 from graficar import Grafica3DRealTime
 from mesaxy import MesaXY
 from data_manager import DataManager
-
+from lockin import get_measurements, set_frequency
 
 class HomeWorker(QThread):
     """Hilo para que la mesa busque el origen sin bloquear la GUI"""
@@ -78,9 +78,11 @@ class MainWindow(QMainWindow):
         self.mesa = None
         self.worker = None
         
-        # Inicializamos la Base de Datos
-        self.db = DataManager() # <--- NUEVO: El archivista está listo
-        self.current_freq = 0.0 # Variable para recordar la frecuencia actual
+        # Inicializamos la Base de Datos (guardado de nuevas mediciones)
+        self.db = DataManager()
+        # DataManager para visualizar mediciones guardadas (carpeta docs)
+        self.db_viewer = DataManager(folder="docs")
+        self.current_freq = 0.0
 
         self.init_ui()
 
@@ -148,11 +150,35 @@ class MainWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         ctrl_layout.addWidget(self.btn_stop)
 
+        # --- VISUALIZAR MEDICIONES GUARDADAS ---
+        ctrl_layout.addSpacing(20)
+        lbl_vis = QLabel("VISUALIZAR MEDICIÓN")
+        lbl_vis.setStyleSheet("font-weight: bold; font-size: 14px; color: #999;")
+        ctrl_layout.addWidget(lbl_vis)
+
+        self.combo_mediciones = QComboBox()
+        self.combo_mediciones.setMinimumWidth(220)
+        self.combo_mediciones.addItem("— Seleccionar —", None)
+        self._refrescar_combo_mediciones()
+        ctrl_layout.addWidget(self.combo_mediciones)
+
+        self.btn_visualizar = QPushButton("CARGAR Y VISUALIZAR")
+        self.btn_visualizar.setStyleSheet("background: #9C27B0; color: white; padding: 8px;")
+        self.btn_visualizar.clicked.connect(self.visualizar_medicion_seleccionada)
+        ctrl_layout.addWidget(self.btn_visualizar)
+
         layout.addWidget(controls_panel)
 
         # --- PANEL DERECHO (Gráfica 3D) ---
-        self.plotter = Grafica3DRealTime()
-        layout.addWidget(self.plotter)
+        # Instanciamos ambas gráficas. Al agregarlas al QHBoxLayout, 
+        # la primera que agreguemos quedará a la izquierda de la segunda.
+        
+        self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")  # Gráfica para la Fase
+        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")   # Gráfica para la Magnitud R
+
+        # Agregamos primero la fase (queda a la izquierda) y luego magnitud (a la derecha)
+        layout.addWidget(self.plotter_fase)
+        layout.addWidget(self.plotter_mag)
 
     def crear_slider(self, min_v, max_v, init_v, func):
         s = QSlider(Qt.Orientation.Horizontal)
@@ -270,19 +296,23 @@ class MainWindow(QMainWindow):
         if not self.mesa: return
 
         # 1. Configurar Hardware
+        # CORRECCIÓN: Llamamos a lockin.set_frequency, no a mesa.ajustar...
         self.current_freq = self.slider_freq.value()
         print(f"Configurando Lock-in a {self.current_freq} Hz...")
-        self.mesa.ajustar_frecuencia(self.current_freq)
+        set_frequency(self.current_freq) 
         
         # 2. Preparar Base de Datos
         exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Iniciando guardado de datos en ID: {exp_id}")
 
-        # 3. Preparar Gráfica
+        # 3. Preparar Gráficas
         self.res_actual = self.slider_res.value() / 1000.0
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
-        self.plotter.inicializar_malla(x_max, y_max, self.res_actual)
+        
+        # Inicializamos ambas mallas
+        self.plotter_fase.inicializar_malla(x_max, y_max, self.res_actual)
+        self.plotter_mag.inicializar_malla(x_max, y_max, self.res_actual)
 
         # 4. Iniciar Worker
         self.toggle_inputs(False)
@@ -297,9 +327,13 @@ class MainWindow(QMainWindow):
         Este método se ejecuta cada vez que el Arduino/Lockin escupen un dato.
         Aquí graficamos Y GUARDAMOS.
         """
-        # 1. Actualizar Gráfica
+        # 1. Actualizar Gráficas
         if 'R' in data_dict:
-            self.plotter.actualizar_punto(x, y, data_dict['R'])
+            self.plotter_mag.actualizar_punto(x, y, data_dict['R'])
+            
+        # Reemplaza 'Theta' por la clave exacta que uses en tu diccionario para la fase
+        if 'phi' in data_dict: 
+            self.plotter_fase.actualizar_punto(x, y, data_dict['phi'])
         
         # 2. Guardar en DuckDB
         # Pasamos x, y, el diccionario completo y la frecuencia actual
@@ -327,6 +361,7 @@ class MainWindow(QMainWindow):
 
     def measurement_finished(self):
         self.toggle_inputs(True)
+        self._refrescar_combo_mediciones()
         QMessageBox.information(self, "Fin", "Barrido completado y datos guardados.")
 
     def measurement_error(self, err_msg):
@@ -337,13 +372,50 @@ class MainWindow(QMainWindow):
         self.slider_x.setEnabled(enable)
         self.slider_y.setEnabled(enable)
         self.slider_res.setEnabled(enable)
-        self.slider_freq.setEnabled(enable) # Bloqueamos frecuencia también
+        self.slider_freq.setEnabled(enable)
         self.btn_home.setEnabled(enable)
         self.btn_measure.setEnabled(enable)
 
+    def _refrescar_combo_mediciones(self):
+        """Recarga el listado de mediciones disponibles en el combo."""
+        self.combo_mediciones.clear()
+        self.combo_mediciones.addItem("— Seleccionar —", None)
+        mediciones = self.db_viewer.listar_mediciones()
+        for exp_id, fecha, n_puntos in mediciones:
+            fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
+            self.combo_mediciones.addItem(f"{exp_id} ({fecha_str}, {n_puntos} pts)", exp_id)
+        for exp_id, fecha, n_puntos in self.db.listar_mediciones():
+            ids_actuales = [self.combo_mediciones.itemData(i) for i in range(1, self.combo_mediciones.count())]
+            if exp_id not in ids_actuales:
+                fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
+                self.combo_mediciones.addItem(f"{exp_id} ({fecha_str}, {n_puntos} pts)", exp_id)
+
+    def visualizar_medicion_seleccionada(self):
+        """Carga la medición seleccionada y la muestra en las gráficas 3D."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Visualizar", "Selecciona una medición del menú.")
+            return
+
+        data = self.db_viewer.cargar_medicion(exp_id)
+        if data is None:
+            data = self.db.cargar_medicion(exp_id)
+        if data is None:
+            QMessageBox.warning(self, "Error", f"No se pudo cargar la medición {exp_id}")
+            return
+
+        self.plotter_mag.cargar_datos_completos(
+            data["x_max"], data["y_max"], data["res"], data["z_mag"]
+        )
+        self.plotter_fase.cargar_datos_completos(
+            data["x_max"], data["y_max"], data["res"], data["z_fase"]
+        )
+        QMessageBox.information(self, "Visualizar", f"Medición {exp_id} cargada correctamente.")
+
     def closeEvent(self, event):
         self.emergency_stop()
-        self.db.cerrar() # Cerramos la BD al salir
+        self.db.cerrar()
+        self.db_viewer.cerrar()
         event.accept()
 
 if __name__ == "__main__":

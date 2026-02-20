@@ -5,14 +5,22 @@ if not hasattr(np, 'product'):
 
 import pyqtgraph.opengl as gl
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
-from PyQt6.QtGui import QVector3D
+from PyQt6.QtGui import QVector3D, QFont
 from PyQt6.QtCore import QTimer
 import matplotlib.pyplot as plt
 
 
 class Grafica3DRealTime(QWidget):
-    def __init__(self):
+    def __init__(self, titulo_z="R (µV)"): # <--- Añadimos el título por defecto
         super().__init__()
+        self.titulo_z_texto = titulo_z # Guardamos el nombre del eje
+        
+        # Definimos una fuente pequeña para los ejes
+        self.font_ejes = QFont('Arial', 8) 
+        # Definimos una fuente un poco más grande para el título del eje
+        self.font_titulo = QFont('Arial', 10, QFont.Weight.Bold)
+
+        self.layout = QVBoxLayout()
 
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -137,6 +145,11 @@ class Grafica3DRealTime(QWidget):
     # ---------------------------------------------------------
 
     def _dibujar_ejes_enumerados(self):
+        # Limpiar items previos de ejes si existen
+        for item in self.axes_items:
+            self.view.removeItem(item)
+        self.axes_items = []
+
         axis = gl.GLAxisItem()
         z_height = max(self.x_max, self.y_max) * 0.4
         axis.setSize(self.x_max, self.y_max, z_height)
@@ -145,47 +158,73 @@ class Grafica3DRealTime(QWidget):
 
         pasos = 5
 
-        # Etiqueta Z principal
+        # --- ETIQUETA Z PRINCIPAL (Pasamos la fuente aquí mismo) ---
         self.z_label = gl.GLTextItem(
-            pos=(0, 0, z_height*1.2),
-            text="R (µV)",
-            color=(255, 255, 255, 180)
+            pos=(0, 0, z_height * 1.2),
+            text=self.titulo_z_texto,
+            color=(255, 255, 255, 200),
+            font=self.font_titulo  # <--- SE PASA COMO ARGUMENTO
         )
         self.view.addItem(self.z_label)
         self.axes_items.append(self.z_label)
 
-        # Marcas Z dinámicas
+        # --- MARCAS Z DINÁMICAS ---
         self.z_ticks = []
         for i in range(pasos + 1):
-            tick = gl.GLTextItem(pos=(0, 0, 0), text="", color=(255, 255, 255, 120))
+            tick = gl.GLTextItem(
+                pos=(0, 0, 0), 
+                text="", 
+                color=(255, 255, 255, 120),
+                font=self.font_ejes  # <--- FUENTE PEQUEÑA AQUÍ
+            )
             self.view.addItem(tick)
             self.axes_items.append(tick)
             self.z_ticks.append(tick)
 
-        # X
-        t_x = gl.GLTextItem(pos=(self.x_max*1.2, -self.y_max*0.2, 0), text="X mm", color=(255,255,255,100))
+        # --- EJE X ---
+        t_x = gl.GLTextItem(
+            pos=(self.x_max*1.1, -self.y_max*0.1, 0), 
+            text="X mm", 
+            color=(255,255,255,150),
+            font=self.font_ejes
+        )
         self.view.addItem(t_x)
         self.axes_items.append(t_x)
 
         for i in range(pasos + 1):
             val = (self.x_max / pasos) * i
-            t = gl.GLTextItem(pos=(val, -self.y_max*0.2, 0), text=f"{val:.1f}", color=(255,255,255,100))
+            t = gl.GLTextItem(
+                pos=(val, -self.y_max*0.1, 0), 
+                text=f"{val:.1f}", 
+                color=(255,255,255,100),
+                font=self.font_ejes
+            )
             self.view.addItem(t)
             self.axes_items.append(t)
-        # Y
-        t_y = gl.GLTextItem(pos=(-self.x_max*0.15, self.y_max * 1.2, 0), text="Y mm", color=(255,255,255,100))
+
+        # --- EJE Y ---
+        t_y = gl.GLTextItem(
+            pos=(-self.x_max*0.1, self.y_max * 1.1, 0), 
+            text="Y mm", 
+            color=(255,255,255,150),
+            font=self.font_ejes
+        )
         self.view.addItem(t_y)
         self.axes_items.append(t_y)
 
         for i in range(pasos + 1):
             val = (self.y_max / pasos) * i
-            t = gl.GLTextItem(pos=(-self.x_max*0.15, val, 0), text=f"{val:.1f}", color=(255,255,255,100))
+            t = gl.GLTextItem(
+                pos=(-self.x_max*0.1, val, 0), 
+                text=f"{val:.1f}", 
+                color=(255,255,255,100),
+                font=self.font_ejes
+            )
             self.view.addItem(t)
             self.axes_items.append(t)
 
     def _actualizar_eje_z_visual(self, z_min, z_max):
         visual_height_target = max(self.x_max, self.y_max) * 0.4
-
         pasos = len(self.z_ticks) - 1
 
         for i in range(pasos + 1):
@@ -193,10 +232,13 @@ class Grafica3DRealTime(QWidget):
             z_real = z_min + frac * (z_max - z_min)
             z_visual = frac * visual_height_target
 
-            self.z_ticks[i].setData(
-                pos=(0, 0, z_visual),
-                text=f"{z_real*1e6:.2f} µV"
-            )
+            # Formateo dinámico según el título
+            if "µV" in self.titulo_z_texto:
+                texto_tick = f"{z_real*1e6:.2f} µV"
+            else:
+                texto_tick = f"{z_real:.1f}°"
+
+            self.z_ticks[i].setData(pos=(0, 0, z_visual), text=texto_tick)
 
     # ---------------------------------------------------------
     # ACTUALIZACIÓN DE DATOS
@@ -212,6 +254,17 @@ class Grafica3DRealTime(QWidget):
         if abs_z > self.z_max_historico:
             self.z_max_historico = abs_z
 
+        self._recalcular_superficie()
+
+    def cargar_datos_completos(self, x_max, y_max, res, z_grid):
+        """
+        Carga una malla completa de datos (para visualizar mediciones guardadas).
+        z_grid: array 2D (ny x nx) con los valores Z.
+        """
+        self.inicializar_malla(x_max, y_max, res)
+        self.z_raw = np.asarray(z_grid, dtype=float).copy()
+        abs_z = np.abs(self.z_raw)
+        self.z_max_historico = max(abs_z.max(), 1e-9)
         self._recalcular_superficie()
 
 
