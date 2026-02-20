@@ -1,4 +1,5 @@
 import duckdb
+import json
 from datetime import datetime
 import os
 
@@ -162,6 +163,49 @@ class DataManager:
         except Exception as e:
             print(f"Error cargando medición {experiment_id}: {e}")
             return None
+
+    def _ruta_aliases(self):
+        return os.path.join(self.folder, "aliases.json")
+
+    def obtener_alias(self, experiment_id):
+        """Devuelve el alias de una medición, o None si no existe."""
+        path = self._ruta_aliases()
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                aliases = json.load(f)
+            return aliases.get(experiment_id)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def guardar_alias(self, experiment_id, alias):
+        """Guarda un alias (seudónimo) para una medición."""
+        path = self._ruta_aliases()
+        aliases = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    aliases = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+        alias_limpio = (alias or "").strip()
+        if alias_limpio:
+            aliases[experiment_id] = alias_limpio
+        else:
+            aliases.pop(experiment_id, None)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(aliases, f, indent=2, ensure_ascii=False)
+
+    def eliminar_medicion(self, experiment_id):
+        """Elimina todos los datos de una medición de la base de datos."""
+        try:
+            self.conn.execute("DELETE FROM mediciones WHERE experiment_id = ?", [experiment_id])
+            self.guardar_alias(experiment_id, "")
+            return True
+        except Exception as e:
+            print(f"Error eliminando medición {experiment_id}: {e}")
+            return False
 
     def cerrar(self):
         if self.conn:

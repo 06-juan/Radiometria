@@ -78,10 +78,9 @@ class MainWindow(QMainWindow):
         self.mesa = None
         self.worker = None
         
-        # Inicializamos la Base de Datos (guardado de nuevas mediciones)
+        # Inicializamos la Base de Datos (guardado en carpeta data)
         self.db = DataManager()
-        # DataManager para visualizar mediciones guardadas (carpeta docs)
-        self.db_viewer = DataManager(folder="docs")
+        self.db_viewer = DataManager(folder="data")
         self.current_freq = 0.0
 
         self.init_ui()
@@ -159,8 +158,24 @@ class MainWindow(QMainWindow):
         self.combo_mediciones = QComboBox()
         self.combo_mediciones.setMinimumWidth(220)
         self.combo_mediciones.addItem("— Seleccionar —", None)
-        self._refrescar_combo_mediciones()
+        self.combo_mediciones.currentIndexChanged.connect(self._al_cambiar_medicion_combo)
         ctrl_layout.addWidget(self.combo_mediciones)
+
+        row_alias = QHBoxLayout()
+        self.input_alias = QLineEdit()
+        self.input_alias.setPlaceholderText("Pseudónimo para la medición...")
+        row_alias.addWidget(self.input_alias, 1)
+        self.btn_renombrar = QPushButton("Renombrar")
+        self.btn_renombrar.setStyleSheet("background: #607D8B; color: white; padding: 6px;")
+        self.btn_renombrar.clicked.connect(self._renombrar_medicion)
+        row_alias.addWidget(self.btn_renombrar, 1)
+        self.btn_borrar = QPushButton("Borrar")
+        self.btn_borrar.setStyleSheet("background: #D32F2F; color: white; padding: 6px; font-size: 11px;")
+        self.btn_borrar.clicked.connect(self._borrar_medicion)
+        row_alias.addWidget(self.btn_borrar)
+        ctrl_layout.addLayout(row_alias)
+
+        self._refrescar_combo_mediciones()
 
         self.btn_visualizar = QPushButton("CARGAR Y VISUALIZAR")
         self.btn_visualizar.setStyleSheet("background: #9C27B0; color: white; padding: 8px;")
@@ -378,17 +393,69 @@ class MainWindow(QMainWindow):
 
     def _refrescar_combo_mediciones(self):
         """Recarga el listado de mediciones disponibles en el combo."""
+        self.combo_mediciones.blockSignals(True)
         self.combo_mediciones.clear()
         self.combo_mediciones.addItem("— Seleccionar —", None)
+
+        def _texto_item(exp_id, fecha, n_puntos):
+            alias = self.db_viewer.obtener_alias(exp_id)
+            fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
+            base = f"{exp_id} ({fecha_str}, {n_puntos} pts)"
+            return f"{alias} — {base}" if alias else base
+
         mediciones = self.db_viewer.listar_mediciones()
         for exp_id, fecha, n_puntos in mediciones:
-            fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
-            self.combo_mediciones.addItem(f"{exp_id} ({fecha_str}, {n_puntos} pts)", exp_id)
+            self.combo_mediciones.addItem(_texto_item(exp_id, fecha, n_puntos), exp_id)
         for exp_id, fecha, n_puntos in self.db.listar_mediciones():
             ids_actuales = [self.combo_mediciones.itemData(i) for i in range(1, self.combo_mediciones.count())]
             if exp_id not in ids_actuales:
-                fecha_str = fecha.strftime("%Y-%m-%d %H:%M") if hasattr(fecha, 'strftime') else str(fecha)
-                self.combo_mediciones.addItem(f"{exp_id} ({fecha_str}, {n_puntos} pts)", exp_id)
+                self.combo_mediciones.addItem(_texto_item(exp_id, fecha, n_puntos), exp_id)
+        self.combo_mediciones.blockSignals(False)
+        self._al_cambiar_medicion_combo()
+
+    def _al_cambiar_medicion_combo(self):
+        """Actualiza el campo de alias al cambiar la medición seleccionada."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            self.input_alias.clear()
+            return
+        alias = self.db_viewer.obtener_alias(exp_id)
+        self.input_alias.setText(alias or "")
+
+    def _renombrar_medicion(self):
+        """Guarda el alias (seudónimo) de la medición seleccionada."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Renombrar", "Selecciona primero una medición.")
+            return
+        alias = self.input_alias.text().strip()
+        self.db_viewer.guardar_alias(exp_id, alias)
+        self._refrescar_combo_mediciones()
+        idx = self.combo_mediciones.findData(exp_id)
+        if idx >= 0:
+            self.combo_mediciones.setCurrentIndex(idx)
+        QMessageBox.information(self, "Renombrar", f"Pseudónimo guardado." if alias else "Pseudónimo eliminado.")
+
+    def _borrar_medicion(self):
+        """Elimina la medición seleccionada tras confirmación."""
+        exp_id = self.combo_mediciones.currentData()
+        if exp_id is None:
+            QMessageBox.information(self, "Borrar", "Selecciona primero una medición.")
+            return
+        resp = QMessageBox.question(
+            self, "Borrar medición", "¿Desea borrar los datos de esta medición?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel
+        )
+        if resp != QMessageBox.StandardButton.Ok:
+            return
+        ok1 = self.db_viewer.eliminar_medicion(exp_id)
+        ok2 = self.db.eliminar_medicion(exp_id)
+        if ok1 or ok2:
+            self._refrescar_combo_mediciones()
+            QMessageBox.information(self, "Borrar", "Medición eliminada.")
+        else:
+            QMessageBox.warning(self, "Borrar", "No se pudo eliminar la medición.")
 
     def visualizar_medicion_seleccionada(self):
         """Carga la medición seleccionada y la muestra en las gráficas 3D."""
