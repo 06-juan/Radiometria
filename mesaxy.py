@@ -4,18 +4,15 @@ import numpy as np
 try:
     from lockin import SR830, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 except ImportError:
-    print("error con el lockin")
+    print("Error importando el controlador del Lock-in")
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
-        self.TIEMPO_DE_ESTABILIZACION = 0.005
         self.TIEMPO_DE_RELAJACION_TERMICA = 0.005
-
         self.lockin = SR830()
-        # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
-        time.sleep(1) # El Arduino se reinicia al conectar
+        time.sleep(1) 
         self._wait_for_ready()
 
     def _wait_for_ready(self):
@@ -25,44 +22,25 @@ class MesaXY:
                 line = self.ser.readline().decode('utf-8').strip()
                 if line in ["READY", "HOMED"]: 
                     return
-            
             if time.time() - start_time > 80:
                 raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):
         self.ser.write((cmd + "\n").encode('utf-8'))
 
-    def stop_current_operation(self):
-        """Activa la bandera para detener el bucle de medición"""
-        self._abort = True
-
-    def close(self):
-        """Secuencia de apagado seguro"""
-        try:
-            self.stop_current_operation()
-            self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-            self.disable() # Apagar motores
-            self.lockin.close()
-            time.sleep(0.1)
-            if self.ser.is_open:
-                self.ser.close()
-        except Exception as e:
-            print(f"Error cerrando: {e}")
-
-    def ajustar_frecuencia(self,freq):
+    def ajustar_frecuencia(self, freq):
+        """Ajusta frecuencia y maneja automáticamente la TC y la espera."""
         self.lockin.set_frequency(freq)
 
-    def sweep_and_measure_generator(self, x_max, y_max, res):
-        """
-        Generador sincronizado: 
-        1. Recibe posición (POS) -> La guarda.
-        2. Recibe gatillo (LASER) -> Mide y continúa.
-        """
+    def sweep_and_measure_generator(self, x_max, y_max, res, freq_actual):
+        """Barrido espacial XY. Ajusta la TC antes de empezar."""
         self._abort = False
-        current_x, current_y = 0.0, 0.0  # Nuestra "libreta" de coordenadas
+        current_x, current_y = 0.0, 0.0
+        
+        # 1. Ajuste crítico de TC antes de medir cualquier punto
+        self.ajustar_frecuencia(freq_actual)
         
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-        
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
         
@@ -71,57 +49,35 @@ class MesaXY:
                 line = self.ser.readline().decode('utf-8').strip()
                 if not line: continue
                 
-                # A: Actualizar coordenadas en la libreta
                 if line.startswith("POS"):
                     try:
                         _, x_str, y_str = line.split()
                         current_x, current_y = float(x_str), float(y_str)
-                    except ValueError:
-                        print(f"Error parseando posición: {line}")
+                    except ValueError: pass
 
-                # B: Ejecutar la medición (El "Gatillo")
                 elif line == "LASER":
                     if self._abort: break
-                    
-                    # --- SECUENCIA DE MEDICIÓN ---
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(self.TIEMPO_DE_ESTABILIZACION)
+                    
+                    # La espera de estabilización ya ocurrió en ajustar_frecuencia
+                    # Sin embargo, para cada punto damos un breve respiro
+                    time.sleep(0.01) 
                     
                     z_data = self.lockin.get_measurements()
-                    print(f"Medido en ({current_x}, {current_y}): {z_data}")
-                    
                     self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-                    
-                    # Ceder datos a la GUI
                     yield current_x, current_y, z_data
-                    
-                    # Liberar al Arduino para el siguiente punto
                     self._send_command("CONT")
 
-                elif line.startswith("ERR"):
-                    raise RuntimeError(f"Arduino Error: {line}")
-                
-                elif line == "OK":
-                    print("Barrido terminado con éxito.")
-                    break
+                elif line == "OK": break
             else:
                 time.sleep(0.01)
 
-        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
-        """
-        Generador de barrido de frecuencia en un punto estático (0,0).
-        """
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
+        """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""
         self._abort = False
+        self.disable()
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         
-        self.disable() # El Arduino descansa
-        
-        # 2. Asegurar que el láser empiece apagado
-        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-        
-        # Generar frecuencias (En PTR el logspace es mejor para ver la difusión)
         if log_space:
             freqs = np.logspace(np.log10(f_start), np.log10(f_end), steps)
         else:
@@ -130,42 +86,25 @@ class MesaXY:
         for f in freqs:
             if self._abort: break
             
-            self.lockin.set_frequency(f)
+            # 2. Ajuste automático: cambia frecuencia, cambia TC y ESPERA 5*TC
+            self.ajustar_frecuencia(f)
+            
             self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-            
-            # --- EL PROBLEMA FÍSICO ---
-            time.sleep(self.TIEMPO_DE_ESTABILIZACION) 
-            
-            # 5. Medir amplitud y fase
             z_data = self.lockin.get_measurements()
-            
             yield f, z_data
-
-            # 6. Apagar láser (Respiro térmico)
             self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-            
-            # ¿Cuánto tiempo necesita la muestra para volver al equilibrio?
             time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
             
-            
-        # Al terminar, asegurar que todo quede apagado
-        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         print("Barrido de frecuencia terminado.")
-    
+
+    def disable(self):
+        self._send_command("EN_OFF")
+
     def home(self):
         self._send_command("HOME")
         self._wait_for_ready()
 
-    def ping(self): #Verifiquemos la conexion de una forma chistosa jajaja
-        response = self._send_command("PING")
-        if response != "PONG":
-            raise RuntimeError("PING failed")
-        print("Ping successful")
-
-    def enable(self):
-        self._send_command("EN_ON")
-        print("Motors enabled")
-
-    def disable(self):
-        self._send_command("EN_OFF")
-        print("Motors disabled")
+    def close(self):
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+        self.lockin.close()
+        if self.ser.is_open: self.ser.close()
