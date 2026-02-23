@@ -1,11 +1,13 @@
 import sys
 import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit, QComboBox)
+                             QHBoxLayout, QLabel, QPushButton, QSlider, QFrame, 
+                             QMessageBox, QLineEdit, QComboBox, QStackedWidget)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Importar nuestros módulos
 from graficar import Grafica3DRealTime
+from grafica_2d import Grafica2DRealTime
 from mesaxy import MesaXY
 from data_manager import DataManager
 
@@ -68,6 +70,22 @@ class ConnectWorker(QThread):
             self.success_signal.emit(nueva_mesa)
         except Exception as e:
             self.error_signal.emit(str(e))
+
+class FreqWorkerThread(QThread):
+    data_signal = pyqtSignal(float, dict) # frecuencia, datos
+    finished_signal = pyqtSignal()
+
+    def __init__(self, mesa, f_start, f_end, steps):
+        super().__init__()
+        self.mesa = mesa
+        self.f_start = f_start
+        self.f_end = f_end
+        self.steps = steps
+
+    def run(self):
+        for f, z_data in self.mesa.sweep_frequency_generator(self.f_start, self.f_end, self.steps):
+            self.data_signal.emit(f, z_data)
+        self.finished_signal.emit()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -142,6 +160,12 @@ class MainWindow(QMainWindow):
         self.btn_measure.setEnabled(False)
         ctrl_layout.addWidget(self.btn_measure)
 
+        self.btn_frecuency = QPushButton("VARICACION FRECUENCIA")
+        self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
+        self.btn_frecuency.clicked.connect(self.start_measurement_frecuency)
+        self.btn_frecuency.setEnabled(False)
+        ctrl_layout.addWidget(self.btn_frecuency)
+
         # Botón de Pánico
         self.btn_stop = QPushButton("STOP / DESCONECTAR")
         self.btn_stop.setStyleSheet("background: #D32F2F; color: white; padding: 12px; font-weight: bold;")
@@ -185,15 +209,29 @@ class MainWindow(QMainWindow):
         layout.addWidget(controls_panel)
 
         # --- PANEL DERECHO (Gráfica 3D) ---
-        # Instanciamos ambas gráficas. Al agregarlas al QHBoxLayout, 
-        # la primera que agreguemos quedará a la izquierda de la segunda.
-        
-        self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")  # Gráfica para la Fase
-        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")   # Gráfica para la Magnitud R
+        self.stack_graficas = QStackedWidget()
+        layout.addWidget(self.stack_graficas)
 
-        # Agregamos primero la fase (queda a la izquierda) y luego magnitud (a la derecha)
-        layout.addWidget(self.plotter_fase)
-        layout.addWidget(self.plotter_mag)
+        # PAGINA 0: Vista 3D (Para barrido XY)
+        self.widget_3d = QWidget()
+        layout_3d = QHBoxLayout(self.widget_3d)
+        self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")
+        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")
+        layout_3d.addWidget(self.plotter_fase)
+        layout_3d.addWidget(self.plotter_mag)
+        self.stack_graficas.addWidget(self.widget_3d)
+
+        # PAGINA 1: Vista 2D (Para barrido de Frecuencia)
+        self.widget_2d = QWidget()
+        layout_2d = QHBoxLayout(self.widget_2d)
+        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq")
+        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq")
+        layout_2d.addWidget(self.plot_mag_2d)
+        layout_2d.addWidget(self.plot_fase_2d)
+        self.stack_graficas.addWidget(self.widget_2d)
+
+        # --- CONFIGURACIÓN INICIAL ---
+        self.stack_graficas.setCurrentIndex(0) # Forzamos que inicie en 3D
 
     def crear_slider(self, min_v, max_v, init_v, func):
         s = QSlider(Qt.Orientation.Horizontal)
@@ -307,8 +345,10 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
     def start_measurement(self):
+        """Inicia Barrido Espacial (XY)"""
         self.btn_measure.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
         if not self.mesa: return
+        self.stack_graficas.setCurrentIndex(0) # Mostrar 3D
 
         # 1. Configurar Hardware
         self.current_freq = self.slider_freq.value()
@@ -331,7 +371,7 @@ class MainWindow(QMainWindow):
         # 4. Iniciar Worker
         self.toggle_inputs(False)
         self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual)
-        self.worker.data_signal.connect(self.handle_new_data) # <--- Aquí recibimos el dato
+        self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
         self.worker.error_signal.connect(self.measurement_error)
         self.worker.start()
@@ -353,6 +393,38 @@ class MainWindow(QMainWindow):
         # Pasamos x, y, el diccionario completo y la frecuencia actual
         self.db.guardar_punto(x, y, data_dict, self.current_freq)
 
+    def start_measurement_frecuency(self):
+        """Inicia Barrido de Profundidad (Frecuencia)"""
+        if not self.mesa: return
+        self.stack_graficas.setCurrentIndex(1) # Mostrar 2D
+        
+        # Limpiar gráficas 2D
+        self.plot_freq_mag.limpiar()
+        self.plot_freq_fase.limpiar()
+        
+        # Definir rango (puedes sacar esto de nuevos inputs o sliders)
+        f_ini = 1.0 #frecuencia inicial
+        f_fin = 1000.0 #frecuencia final
+        pasos = 20  #nuemero de mediciones
+        
+        self.mesa.home() # Asegurar punto 0,0
+        self.toggle_inputs(False)
+        
+        self.worker_f = FreqWorkerThread(self.mesa, f_ini, f_fin, pasos)
+        self.worker_f.data_signal.connect(self.handle_new_freq_data)
+        self.worker_f.finished_signal.connect(self.measurement_finished)
+        self.worker_f.start()
+
+    def handle_new_freq_data(self, f, data_dict):
+        """Actualiza las gráficas 2D en tiempo real"""
+        if 'R' in data_dict:
+            self.plot_mag_2d.actualizar(f, data_dict['R']) 
+        if 'phi' in data_dict:
+            self.plot_fase_2d.actualizar(f, data_dict['phi'])
+        
+        # Guardar en DB (X=0, Y=0 para este experimento)
+        self.db.guardar_punto(0.0, 0.0, data_dict, f)
+
     def emergency_stop(self):
         if self.worker and self.worker.isRunning():
             self.mesa.stop_current_operation()
@@ -369,6 +441,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
 
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
+        self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
 
         self.toggle_inputs(True)
 
@@ -389,6 +462,7 @@ class MainWindow(QMainWindow):
         self.slider_freq.setEnabled(enable)
         self.btn_home.setEnabled(enable)
         self.btn_measure.setEnabled(enable)
+        self.btn_frecuency.setEnabled(enable)
 
     def _refrescar_combo_mediciones(self):
         """Recarga el listado de mediciones disponibles en el combo."""

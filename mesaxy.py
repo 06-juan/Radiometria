@@ -1,5 +1,6 @@
 import serial
 import time
+import numpy as np
 # Asegúrate de que lockin.py esté accesible
 try:
     from lockin import SR830, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
@@ -8,6 +9,9 @@ except ImportError:
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
+        self.TIEMPO_DE_ESTABILIZACION = 1.5
+        self.TIEMPO_DE_RELAJACION_TERMICA = 1.5
+
         self.lockin = SR830()
         # Bajamos un poco el timeout para que el hilo no sufra demasiado
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
@@ -82,7 +86,7 @@ class MesaXY:
                     
                     # --- SECUENCIA DE MEDICIÓN ---
                     self.ajustar_frecuencia(LASER_ON_VOLTAGE)
-                    time.sleep(0.015) # Estabilización
+                    time.sleep(self.TIEMPO_DE_ESTABILIZACION)
                     
                     z_data = self.lockin.get_measurements()
                     print(f"Medido en ({current_x}, {current_y}): {z_data}")
@@ -106,6 +110,49 @@ class MesaXY:
 
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
+        """
+        Generador de barrido de frecuencia en un punto estático (0,0).
+        """
+        self._abort = False
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+        
+        self.disable() # El Arduino descansa
+        
+        # 2. Asegurar que el láser empiece apagado
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+        
+        # Generar frecuencias (En PTR el logspace es mejor para ver la difusión)
+        if log_space:
+            freqs = np.logspace(np.log10(f_start), np.log10(f_end), steps)
+        else:
+            freqs = np.linspace(f_start, f_end, steps)
+        
+        for f in freqs:
+            if self._abort: break
+            
+            self.lockin.set_frequency(f)
+            self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+            
+            # --- EL PROBLEMA FÍSICO ---
+            time.sleep(self.TIEMPO_DE_ESTABILIZACION) 
+            
+            # 5. Medir amplitud y fase
+            z_data = self.lockin.get_measurements()
+            
+            yield f, z_data
+
+            # 6. Apagar láser (Respiro térmico)
+            self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+            
+            # ¿Cuánto tiempo necesita la muestra para volver al equilibrio?
+            time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
+            
+            
+        # Al terminar, asegurar que todo quede apagado
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+        print("Barrido de frecuencia terminado.")
+    
     def home(self):
         self._send_command("HOME")
         self._wait_for_ready()
