@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(True)
         self.btn_home.setText("HOMED")
         self.btn_measure.setEnabled(True)
+        self.btn_frecuency.setEnabled(True)
         print("Mesa en posición de origen.")
 
     def on_home_error(self, error):
@@ -395,19 +396,19 @@ class MainWindow(QMainWindow):
 
     def start_measurement_frecuency(self):
         """Inicia Barrido de Profundidad (Frecuencia)"""
+        self.btn_frecuency.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
         if not self.mesa: return
         self.stack_graficas.setCurrentIndex(1) # Mostrar 2D
         
         # Limpiar gráficas 2D
-        self.plot_freq_mag.limpiar()
-        self.plot_freq_fase.limpiar()
+        self.plot_mag_2d.limpiar()
+        self.plot_fase_2d.limpiar()
         
         # Definir rango (puedes sacar esto de nuevos inputs o sliders)
         f_ini = 1.0 #frecuencia inicial
         f_fin = 1000.0 #frecuencia final
         pasos = 20  #nuemero de mediciones
         
-        self.mesa.home() # Asegurar punto 0,0
         self.toggle_inputs(False)
         
         self.worker_f = FreqWorkerThread(self.mesa, f_ini, f_fin, pasos)

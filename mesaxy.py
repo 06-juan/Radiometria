@@ -1,7 +1,6 @@
 import serial
 import time
 import numpy as np
-# Asegúrate de que lockin.py esté accesible
 try:
     from lockin import SR830, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 except ImportError:
@@ -9,8 +8,8 @@ except ImportError:
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
-        self.TIEMPO_DE_ESTABILIZACION = 1.5
-        self.TIEMPO_DE_RELAJACION_TERMICA = 1.5
+        self.TIEMPO_DE_ESTABILIZACION = 0.005
+        self.TIEMPO_DE_RELAJACION_TERMICA = 0.005
 
         self.lockin = SR830()
         # Bajamos un poco el timeout para que el hilo no sufra demasiado
@@ -85,7 +84,7 @@ class MesaXY:
                     if self._abort: break
                     
                     # --- SECUENCIA DE MEDICIÓN ---
-                    self.ajustar_frecuencia(LASER_ON_VOLTAGE)
+                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
                     time.sleep(self.TIEMPO_DE_ESTABILIZACION)
                     
                     z_data = self.lockin.get_measurements()
@@ -110,7 +109,7 @@ class MesaXY:
 
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
         """
         Generador de barrido de frecuencia en un punto estático (0,0).
         """
