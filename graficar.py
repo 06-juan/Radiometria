@@ -74,8 +74,9 @@ class Grafica3DRealTime(QWidget):
         self.xs = np.linspace(0, x_max, self.nx)
         self.ys = np.linspace(0, y_max, self.ny)
 
-        self.z_raw = np.zeros((self.ny, self.nx))
-        self.z_grid = np.zeros((self.ny, self.nx))
+        # CAMBIO AQUÍ: De (self.ny, self.nx) a (self.nx, self.ny)
+        self.z_raw = np.zeros((self.nx, self.ny)) 
+        self.z_grid = np.zeros((self.nx, self.ny))
 
         self.z_max_historico = 1e-9
 
@@ -291,7 +292,8 @@ class Grafica3DRealTime(QWidget):
         ix = int(np.clip(round(x_val / self.res), 0, self.nx - 1))
         iy = int(np.clip(round(y_val / self.res), 0, self.ny - 1))
 
-        self.z_raw[iy, ix] = z_val
+        # CAMBIO AQUÍ: Acceso como [ix, iy]
+        self.z_raw[ix, iy] = z_val 
 
         abs_z = abs(z_val)
         if abs_z > self.z_max_historico:
