@@ -60,8 +60,8 @@ class MesaXY:
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
                     
                     # La espera de estabilización ya ocurrió en ajustar_frecuencia
-                    # Sin embargo, para cada punto damos un breve respiro
-                    time.sleep(0.01) 
+
+                    time.sleep(self.lockin.tiempo_espera) 
                     
                     z_data = self.lockin.get_measurements()
                     self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
@@ -72,7 +72,7 @@ class MesaXY:
             else:
                 time.sleep(0.01)
 
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
         """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""
         self._abort = False
         self.disable()
@@ -90,12 +90,17 @@ class MesaXY:
             self.ajustar_frecuencia(f)
             
             self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+            time.sleep(self.lockin.tiempo_espera) 
             z_data = self.lockin.get_measurements()
             yield f, z_data
             self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
             time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
             
         print("Barrido de frecuencia terminado.")
+    
+    def stop_current_operation(self):
+        """Detenemos bucle de medicion"""
+        self._abort = True
 
     def disable(self):
         self._send_command("EN_OFF")

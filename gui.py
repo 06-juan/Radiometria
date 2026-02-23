@@ -35,18 +35,19 @@ class WorkerThread(QThread):
     finished_signal = pyqtSignal()
     error_signal = pyqtSignal(str)
 
-    def __init__(self, mesa_instance, x_max, y_max, res):
+    def __init__(self, mesa_instance, x_max, y_max, res, freq):
         super().__init__()
         self.mesa = mesa_instance
         self.x_max = x_max
         self.y_max = y_max
         self.res = res
+        self.freq = freq
 
     def run(self):
         try:
             # 3. Iniciar el generador
             # Pasamos un parámetro extra para saber que es un inicio real
-            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res):
+            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res,self.freq):
                 self.data_signal.emit(x, y, z_data)
             self.finished_signal.emit()
                 
@@ -371,7 +372,7 @@ class MainWindow(QMainWindow):
 
         # 4. Iniciar Worker
         self.toggle_inputs(False)
-        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual)
+        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual, self.current_freq)
         self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
         self.worker.error_signal.connect(self.measurement_error)
@@ -405,9 +406,9 @@ class MainWindow(QMainWindow):
         self.plot_fase_2d.limpiar()
         
         # Definir rango (puedes sacar esto de nuevos inputs o sliders)
-        f_ini = 1.0 #frecuencia inicial
-        f_fin = 1000.0 #frecuencia final
-        pasos = 20  #nuemero de mediciones
+        f_ini = 10.0 #frecuencia inicial
+        f_fin = 10000.0 #frecuencia final
+        pasos = 200  #nuemero de mediciones
         
         self.toggle_inputs(False)
         

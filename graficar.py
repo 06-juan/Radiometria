@@ -74,7 +74,6 @@ class Grafica3DRealTime(QWidget):
         self.xs = np.linspace(0, x_max, self.nx)
         self.ys = np.linspace(0, y_max, self.ny)
 
-        # CAMBIO AQUÍ: De (self.ny, self.nx) a (self.nx, self.ny)
         self.z_raw = np.zeros((self.nx, self.ny)) 
         self.z_grid = np.zeros((self.nx, self.ny))
 
@@ -303,15 +302,48 @@ class Grafica3DRealTime(QWidget):
 
     def cargar_datos_completos(self, x_max, y_max, res, z_grid):
         """
-        Carga una malla completa de datos (para visualizar mediciones guardadas).
-        Resetea la escala al valor estándar (autoescala) como al iniciar una medición.
+        Carga una malla completa y reajusta la cámara y la escala Z 
+        para que los datos siempre ocupen un espacio visible.
         """
-        self.inicializar_malla(x_max, y_max, res)
+        # 1. Actualizar datos internos
         self.z_raw = np.asarray(z_grid, dtype=float).copy()
-        abs_z = np.abs(self.z_raw)
-        self.z_max_historico = max(abs_z.max(), 1e-9)
+        self.nx, self.ny = self.z_raw.shape 
+        
+        self.x_max = x_max
+        self.y_max = y_max
+        self.res = res
+
+        # 2. Re-generar coordenadas para que coincidan exactamente con la forma de z_raw
+        self.xs = np.linspace(0, x_max, self.nx)
+        self.ys = np.linspace(0, y_max, self.ny)
+
+        # 3. Recrear el item de superficie para evitar el error de "shape mismatch"
+        if self.surface_item:
+            self.view.removeItem(self.surface_item)
+
+        # Inicializamos con ceros, pero con el tamaño correcto
+        colores = self.cmap(np.zeros_like(self.z_raw)).reshape(-1, 4)
+        self.surface_item = gl.GLSurfacePlotItem(
+            x=self.xs,
+            y=self.ys,
+            z=np.zeros_like(self.z_raw), 
+            colors=colores,
+            shader='shaded',
+            smooth=False
+        )
+        self.view.addItem(self.surface_item)
+
+        # 4. RESET DE ESCALA Y CÁMARA (Crucial para que no se vea como un punto)
+        self.z_max_historico = max(np.abs(self.z_raw).max(), 1e-9)
         self.auto_scale = True
-        self.z_scale_factor = 1.0
+        
+        # Redibujamos ejes con las nuevas dimensiones x_max, y_max
+        self._dibujar_ejes_enumerados()
+        
+        # Forzamos a la cámara a centrarse en el nuevo objeto pequeño (2x3)
+        self.ajustar_camara(x_max, y_max)
+        
+        # Calculamos la escala visual final
         self._recalcular_superficie()
 
 

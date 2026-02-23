@@ -4,7 +4,7 @@ import numpy as np
 
 # Constantes de configuración para el láser
 LASER_ON_VOLTAGE = 5  
-LASER_OFF_VOLTAGE = 0.5 
+LASER_OFF_VOLTAGE = 0.6 
 
 class SR830:
     def __init__(self, resource_name='GPIB0::8::INSTR', timeout=10000):
@@ -38,7 +38,7 @@ class SR830:
         # Evitar división por cero
         if freq <= 0: return
         
-        periodo_objetivo = 10.0 / freq
+        periodo_objetivo = 10.0 / freq #de 5 a 10
         
         # Buscamos el índice más pequeño cuyo valor sea >= al periodo objetivo
         indice_optimo = 15 # Empezamos por el máximo por seguridad
@@ -53,10 +53,10 @@ class SR830:
         
         # Tiempo de espera crítico para estabilización (5 * TC)
         # Esto bloquea la ejecución para asegurar datos reales
-        tiempo_espera = 5 * self.current_tc_val
+        self.tiempo_espera = 5 * self.current_tc_val
         print(f"[SR830] Freq: {freq:.2f}Hz -> TC auto-set: {self.current_tc_val}s (Idx: {indice_optimo})")
-        print(f"[SR830] Esperando {tiempo_espera:.3f}s para estabilización...")
-        time.sleep(tiempo_espera)
+        print(f"[SR830] Esperando {self.tiempo_espera:.3f}s para estabilización...")
+        time.sleep(self.tiempo_espera/50)
 
     def get_measurements(self):
         """Obtiene X, Y, R y Phase usando el comando SNAP (sincronizado)."""
