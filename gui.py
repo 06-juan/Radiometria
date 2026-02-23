@@ -253,7 +253,6 @@ class MainWindow(QMainWindow):
         # 1. Bloqueamos el botón para evitar clics dobles ansiosos
         self.btn_connect.setEnabled(False)
         self.btn_connect.setText("CONECTANDO...")
-        self.btn_connect.setStyleSheet("background: #FF6900; color: white; padding: 8px;")
         
         # 2. Creamos al trabajador y conectamos sus "avisos"
         self.conn_thread = ConnectWorker(port='COM3')
@@ -268,6 +267,7 @@ class MainWindow(QMainWindow):
     def on_connection_success(self, mesa_instancia):
         self.mesa = mesa_instancia # Ya tenemos la estafeta
         self.btn_connect.setText("CONECTADO")
+        self.btn_connect.setStyleSheet("background: #FF6900; color: white; padding: 8px;")
         self.btn_home.setEnabled(True)
         self.btn_measure.setEnabled(True)
         self.btn_stop.setEnabled(True)
