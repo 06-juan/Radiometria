@@ -67,6 +67,7 @@ class MesaXY:
                     self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
                     yield current_x, current_y, z_data
                     self._send_command("CONT")
+                    time.sleep(0.5) #tiempo mientras frenan los motores a 0.250 de resolucion
 
                 elif line == "OK": break
             else:
