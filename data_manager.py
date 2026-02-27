@@ -151,6 +151,8 @@ class DataManager:
             z_mag = np.nan_to_num(z_mag, nan=0.0)
             z_fase = np.nan_to_num(z_fase, nan=0.0)
 
+            print(z_mag,z_fase,res,x_max,y_max)
+            
             return {
                 "x_max": x_max,
                 "y_max": y_max,
@@ -160,6 +162,7 @@ class DataManager:
                 "z_mag": z_mag,
                 "z_fase": z_fase,
             }
+            
         except Exception as e:
             print(f"Error cargando medición {experiment_id}: {e}")
             return None

@@ -35,25 +35,24 @@ class WorkerThread(QThread):
     finished_signal = pyqtSignal()
     error_signal = pyqtSignal(str)
 
-    def __init__(self, mesa_instance, x_max, y_max, res, freq):
+    def __init__(self, mesa_instance, x_max, y_max, res):
         super().__init__()
         self.mesa = mesa_instance
         self.x_max = x_max
         self.y_max = y_max
         self.res = res
-        self.freq = freq
 
     def run(self):
         try:
             # 3. Iniciar el generador
             # Pasamos un parámetro extra para saber que es un inicio real
-            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res,self.freq):
+            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res):
                 self.data_signal.emit(x, y, z_data)
             self.finished_signal.emit()
                 
         except Exception as e:
             self.error_signal.emit(str(e))
-            
+
 class ConnectWorker(QThread):
     """El mensajero que irá al puerto COM mientras la GUI sigue libre"""
     success_signal = pyqtSignal(object) # Enviará el objeto 'mesa' si todo sale bien
@@ -123,12 +122,12 @@ class MainWindow(QMainWindow):
         # Sliders
         # Eje X: 1.0 a 10.0 mm (Factor 10, 0 decimal)
         self.slider_x, self.input_x = self.crear_control_numerico(
-            ctrl_layout, "X Max (mm)", 10, 100, 50, 10, 0
+            ctrl_layout, "X Max (mm)", 10, 150, 50, 10, 0
         )
 
         # Eje Y: 1.0 a 10.0 mm (Factor 10, 0 decimal)
         self.slider_y, self.input_y = self.crear_control_numerico(
-            ctrl_layout, "Y Max (mm)", 10, 100, 50, 10, 0
+            ctrl_layout, "Y Max (mm)", 10, 150, 50, 10, 0
         )
 
         # Resolución: 0.005 a 1.000 mm (Factor 1000, 3 decimales)
@@ -138,24 +137,18 @@ class MainWindow(QMainWindow):
 
         # frecuencia
         self.slider_freq, self.input_freq = self.crear_control_numerico(
-            ctrl_layout, "frecuencia (Hz)", 1, 1000, 1000, 1, 0
+            ctrl_layout, "frecuencia (Hz)", 1, 5000, 1000, 1, 0
         )
 
         ctrl_layout.addSpacing(20) # Un pequeño respiro visual
 
         # Botones de Control
-        self.btn_connect = QPushButton("1. CONECTAR HARDWARE")
-        self.btn_connect.setStyleSheet("background: #2196F3; color: white; padding: 8px;")
-        self.btn_connect.clicked.connect(self.connect_hardware)
-        ctrl_layout.addWidget(self.btn_connect)
-
-        self.btn_home = QPushButton("2. IR A HOME")
+        self.btn_home = QPushButton("1. IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_home.clicked.connect(self.go_home)
-        self.btn_home.setEnabled(False)
         ctrl_layout.addWidget(self.btn_home)
 
-        self.btn_measure = QPushButton("3. INICIAR MEDICIÓN")
+        self.btn_measure = QPushButton("2. INICIAR MEDICIÓN")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_measure.clicked.connect(self.start_measurement)
         self.btn_measure.setEnabled(False)
@@ -288,49 +281,49 @@ class MainWindow(QMainWindow):
 
         return slider, line_edit
 
-    def connect_hardware(self):
-        # 1. Bloqueamos el botón para evitar clics dobles ansiosos
-        self.btn_connect.setEnabled(False)
-        self.btn_connect.setText("CONECTANDO...")
-        
-        # 2. Creamos al trabajador y conectamos sus "avisos"
-        self.conn_thread = ConnectWorker(port='COM3')
-        self.conn_thread.success_signal.connect(self.on_connection_success)
-        self.conn_thread.error_signal.connect(self.on_connection_error)
-
-        self.btn_stop.setStyleSheet("background: #D32F2F; color: white; padding: 12px; font-weight: bold;")
-        
-        # 3. ¡A trabajar! (Esto lanza el método run() en paralelo)
-        self.conn_thread.start()
-
-    def on_connection_success(self, mesa_instancia):
-        self.mesa = mesa_instancia # Ya tenemos la estafeta
-        self.btn_connect.setText("CONECTADO")
-        self.btn_connect.setStyleSheet("background: #FF6900; color: white; padding: 8px;")
-        self.btn_home.setEnabled(True)
-        self.btn_measure.setEnabled(True)
-        self.btn_stop.setEnabled(True)
-
-    def on_connection_error(self, error):
-        self.btn_connect.setEnabled(True)
-        self.btn_connect.setText("1. REINTENTAR CONEXIÓN")
-        QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
-
     def go_home(self):
         """Inicia el proceso de home en segundo plano"""
-        if not self.mesa: return
+        if not self.mesa:
+            # Conectar hardware primero
+            self.btn_home.setEnabled(False)
+            self.btn_home.setText("CONECTANDO...")
+            self.btn_home.setStyleSheet("background: #FF6900; color: white; padding: 8px; font-weight: bold;")
 
-        # 1. Bloqueamos controles para no mandar comandos contradictorios
+            self.conn_thread = ConnectWorker(port='COM3')
+            self.conn_thread.success_signal.connect(self._on_connect_and_home_success)
+            self.conn_thread.error_signal.connect(self._on_connect_and_home_error)
+
+            self.btn_stop.setStyleSheet("background: #D32F2F; color: white; padding: 12px; font-weight: bold;")
+            self.btn_stop.setEnabled(True)
+
+            self.conn_thread.start()
+            return
+
+        # Si ya hay mesa conectada, solo ir a home
+        self._start_home_thread()
+
+    def _start_home_thread(self):
+        # Bloqueamos controles para no mandar comandos contradictorios
         self.btn_home.setEnabled(False)
         self.btn_home.setText("YENDO A HOME...")
         self.btn_home.setStyleSheet("background: #FF6900; color: white; padding: 8px; font-weight: bold;")
-        self.btn_measure.setEnabled(False) # No medir mientras se mueve a home
+        self.btn_measure.setEnabled(False)  # No medir mientras se mueve a home
 
-        # 2. Creamos y lanzamos el hilo
+        # Creamos y lanzamos el hilo
         self.home_thread = HomeWorker(self.mesa)
         self.home_thread.finished_signal.connect(self.on_home_finished)
         self.home_thread.error_signal.connect(self.on_home_error)
         self.home_thread.start()
+
+    def _on_connect_and_home_success(self, mesa_instancia):
+        self.mesa = mesa_instancia
+        self._start_home_thread()
+
+    def _on_connect_and_home_error(self, error):
+        self.btn_home.setEnabled(True)
+        self.btn_home.setText("1. IR A HOME")
+        self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
+        QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
 
     def on_home_finished(self):
         """Se ejecuta cuando la mesa ya está en (0,0)"""
@@ -343,7 +336,7 @@ class MainWindow(QMainWindow):
     def on_home_error(self, error):
         """Si algo falla durante el movimiento"""
         self.btn_home.setEnabled(True)
-        self.btn_home.setText("2. IR A HOME")
+        self.btn_home.setText("1. IR A HOME")
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
     def start_measurement(self):
@@ -372,7 +365,7 @@ class MainWindow(QMainWindow):
 
         # 4. Iniciar Worker
         self.toggle_inputs(False)
-        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual, self.current_freq)
+        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual)
         self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
         self.worker.error_signal.connect(self.measurement_error)
@@ -408,7 +401,7 @@ class MainWindow(QMainWindow):
         # Definir rango (puedes sacar esto de nuevos inputs o sliders)
         f_ini = 10.0 #frecuencia inicial
         f_fin = 10000.0 #frecuencia final
-        pasos = 200  #nuemero de mediciones
+        pasos = 300  #nuemero de mediciones
         
         self.toggle_inputs(False)
         
@@ -434,16 +427,20 @@ class MainWindow(QMainWindow):
         if self.mesa:
             self.mesa.close()
             self.mesa = None
-        self.btn_connect.setEnabled(True)
-        self.toggle_inputs(False)
         self.btn_stop.setStyleSheet("background: #474B4E; color: white; padding: 12px; font-weight: bold;")
-        self.btn_connect.setText("1. CONECTAR HARDWARE")
-        self.btn_connect.setStyleSheet("background: #2196F3; color: white; padding: 8px;")
-        self.btn_home.setText("2. IR A HOME")
+        self.btn_home.setText("1. IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
-
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
+
+        # Reajustar estado de controles: solo permitir volver a HOME
+        self.slider_x.setEnabled(True)
+        self.slider_y.setEnabled(True)
+        self.slider_res.setEnabled(True)
+        self.slider_freq.setEnabled(True)
+        self.btn_home.setEnabled(True)
+        self.btn_measure.setEnabled(False)
+        self.btn_frecuency.setEnabled(False)
 
         self.toggle_inputs(True)
 

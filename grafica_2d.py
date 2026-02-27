@@ -1,5 +1,6 @@
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
+import numpy as np
 
 class Grafica2DRealTime(QWidget):
     def __init__(self, titulo="Respuesta en Frecuencia"):
@@ -27,6 +28,6 @@ class Grafica2DRealTime(QWidget):
         self.curve.setData([], [])
 
     def actualizar(self, f, z):
-        self.f_data.append(f)
+        self.f_data.append(np.sqrt(f))
         self.z_data.append(z)
         self.curve.setData(self.f_data, self.z_data)
