@@ -32,15 +32,22 @@ class MesaXY:
         """Ajusta frecuencia y maneja automáticamente la TC y la espera."""
         self.lockin.set_frequency(freq)
 
-    def sweep_and_measure_generator(self, x_max, y_max, res, freq_actual):
-        """Barrido espacial XY. Ajusta la TC antes de empezar."""
+    def sweep_and_measure_generator(self, x_max, y_max, res):
+        """
+        Barrido optimizado: Mantiene el láser encendido para preservar 
+        el equilibrio térmico y elimina tiempos de espera mecánicos redundantes.
+        """
         self._abort = False
         current_x, current_y = 0.0, 0.0
         
-        # 1. Ajuste crítico de TC antes de medir cualquier punto
-        self.ajustar_frecuencia(freq_actual)
+        # 1. PREPARACIÓN: Encendemos el láser ANTES de empezar el movimiento
+        # Esto permite que la muestra alcance una temperatura base.
+        self.lockin.set_amplitude(LASER_ON_VOLTAGE)
         
-        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+        # Espera inicial de seguridad para que el primer punto no sea un transitorio
+        time.sleep(self.lockin.tiempo_espera * 2) 
+
+        # 2. INICIO DEL COMANDO
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
         
@@ -56,21 +63,27 @@ class MesaXY:
                     except ValueError: pass
 
                 elif line == "LASER":
+                    # El Arduino ya llegó a la posición y frenó.
                     if self._abort: break
-                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
                     
-                    # La espera de estabilización ya ocurrió en ajustar_frecuencia
-
+                    # 3. ESPERA FÍSICA: Solo el tiempo necesario para el filtro del Lock-in
+                    # No apagamos el láser, solo esperamos la estabilización de la señal AC.
                     time.sleep(self.lockin.tiempo_espera) 
                     
+                    # 4. CAPTURA DE DATOS
                     z_data = self.lockin.get_measurements()
-                    self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+                    
+                    # Enviamos señal de continuar inmediatamente
                     yield current_x, current_y, z_data
                     self._send_command("CONT")
 
-                elif line == "OK": break
+                elif line == "OK": 
+                    break
             else:
-                time.sleep(0.01)
+                time.sleep(0.001) # Mínimo respiro para el procesador
+
+        # 5. CIERRE: Solo apagamos al terminar todo el barrido
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
     def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
         """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""

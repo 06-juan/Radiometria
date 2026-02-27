@@ -56,7 +56,7 @@ class SR830:
         self.tiempo_espera = 3 * self.current_tc_val
         print(f"[SR830] Freq: {freq:.2f}Hz -> TC auto-set: {self.current_tc_val}s (Idx: {indice_optimo})")
         print(f"[SR830] Esperando {self.tiempo_espera:.3f}s para estabilización...")
-        time.sleep(self.tiempo_espera/50)
+        time.sleep(self.tiempo_espera)
 
     def get_measurements(self):
         """Obtiene X, Y, R y Phase usando el comando SNAP (sincronizado)."""

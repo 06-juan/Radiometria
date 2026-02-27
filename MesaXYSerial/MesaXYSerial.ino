@@ -15,7 +15,7 @@ const float STEPS_PER_MM_Y = 6400.0;
 
 // Parámetros de homing
 const float X_OFFSET_MM = 1.0;
-const float Y_OFFSET_MM = 8.0;
+const float Y_OFFSET_MM = 1.0;
 const int X_HOME_DIR = 1;
 const int Y_HOME_DIR = 1;
 const float COARSE_SPEED_X = 10000.0; // pasos/s
