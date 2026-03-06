@@ -218,8 +218,11 @@ class MainWindow(QMainWindow):
         # PAGINA 1: Vista 2D (Para barrido de Frecuencia)
         self.widget_2d = QWidget()
         layout_2d = QHBoxLayout(self.widget_2d)
-        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq")
-        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq")
+
+        # Aquí aplicamos la configuración diferenciada:
+        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq", log_x=True, log_y=True)
+        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=True, log_y=False)
+        
         layout_2d.addWidget(self.plot_mag_2d)
         layout_2d.addWidget(self.plot_fase_2d)
         self.stack_graficas.addWidget(self.widget_2d)
