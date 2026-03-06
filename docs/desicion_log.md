@@ -1,3 +1,12 @@
+5/0/26
+ponemos los ejes con configuracion logaritmica y lineal para un mejor analisis de los datos en las graficas 2d, añadimos una funcion al arduino para un futuro barrido multipunto de frecuencia y promediar en el tamaño de la muestra, esta funcion se podria reutilizar en el marcado del area, con un  voltaje de  1.6  o similar para que el laser alumbre super bajo.
+
+25/02/26
+version preliminar de barrido en frecuencia, para identificar la frecuencia idonea luego de analisis de la grafica
+
+20/02/26
+convinacion de botones conectar y home, ya no era necesario tener dos botones aparte
+
 17/02/26
 He añadido numeros a los ejes, automatice la escala, camara y gire 90° la mesa para que no se choque con el tubo de opticas, he implementado un guardado de datos con SQL/duckdb porque estoy estudiando este sistema en Fisica Computacional 1 y poder almacenar distintas mediciones en un solo documento como tablas.
 
