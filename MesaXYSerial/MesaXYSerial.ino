@@ -117,6 +117,22 @@ void processCommand(String cmd) {
     stepperY.stop();
     Serial.println("Fin");
 
+    } else if (cmd.startsWith("CRUZ")) {
+      //proximamente se usara con el barrido en freucuencia
+    float x_max, y_max;
+    if (parseTwoFloats(cmd, 5, x_max, y_max)) {
+      if (!motorsEnabled) {
+        digitalWrite(ENABLE_PIN, LOW);
+        motorsEnabled = true;
+      }
+      if (!homedOK) {
+        homeAll(); 
+      }
+      run5PointCheck(x_max, y_max);
+    } else {
+      Serial.println("ERR Invalid ALIGN parameters. Use: CRUZ x y");
+    }
+
   } else if (cmd.startsWith("SWEEP")) {
     float x_max, y_max, res;
     if (parseThreeFloats(cmd, 5, x_max, y_max, res) && x_max > 0 && y_max > 0 && res > 0) {
@@ -286,6 +302,25 @@ void homeAxis(AccelStepper &st, int limitPin, float stepsPerMM, float offsetMM,
   waitUntilDone(st);
   st.setCurrentPosition(0);
   Serial.println("DBG Offset applied, position set to 0");
+}
+
+void run5PointCheck(float x_max, float y_max) {
+  sweepActive = true; // Usamos este flag para poder abortar si es necesario
+  
+  // Definimos los 5 puntos clave
+  float pointsX[] = {0.0, x_max, x_max, 0.0,   x_max / 2.0};
+  float pointsY[] = {0.0, 0.0,   y_max, y_max, y_max / 2.0};
+  
+  Serial.println("DBG Starting 5-point alignment");
+
+  for (int i = 0; i < 5 && sweepActive; i++) {
+    // Reutilizamos tu lógica de: mover -> "LASER" -> esperar "CONT"
+    stepAndPause(pointsX[i], pointsY[i]);
+  }
+
+  sweepActive = false;
+  waitingForCont = false;
+  Serial.println("Fin"); 
 }
 
 void homeAll() {
