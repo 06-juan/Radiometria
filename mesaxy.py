@@ -8,7 +8,7 @@ except ImportError:
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
-        self.TIEMPO_DE_RELAJACION_TERMICA = 0.005
+        self.TIEMPO_DE_RELAJACION_TERMICA = 0.05 #tiempo entre mediciones de frecuencia, talvez no sea necesario
         self.lockin = SR830()
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
@@ -22,7 +22,7 @@ class MesaXY:
                 line = self.ser.readline().decode('utf-8').strip()
                 if line in ["READY", "HOMED"]: 
                     return
-            if time.time() - start_time > 80:
+            if time.time() - start_time > 100:
                 raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):
@@ -77,7 +77,7 @@ class MesaXY:
                     yield current_x, current_y, z_data
                     self._send_command("CONT")
 
-                elif line == "OK": 
+                elif line == "Fin": 
                     break
             else:
                 time.sleep(0.001) # Mínimo respiro para el procesador
@@ -85,7 +85,7 @@ class MesaXY:
         # 5. CIERRE: Solo apagamos al terminar todo el barrido
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
         """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""
         self._abort = False
         self.disable()

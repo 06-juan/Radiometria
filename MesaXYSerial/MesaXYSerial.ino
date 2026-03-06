@@ -86,14 +86,17 @@ void loop() {
 void processCommand(String cmd) {
   if (cmd == "PING") {
     Serial.println("PONG");
+    
   } else if (cmd == "EN_ON") {
     digitalWrite(ENABLE_PIN, LOW); // Habilitar drivers
     motorsEnabled = true;
     Serial.println("OK");
+
   } else if (cmd == "EN_OFF") {
     digitalWrite(ENABLE_PIN, HIGH); // Deshabilitar drivers
     motorsEnabled = false;
     Serial.println("OK");
+
   } else if (cmd == "HOME") {
     if (!motorsEnabled) {
       digitalWrite(ENABLE_PIN, LOW);
@@ -103,46 +106,26 @@ void processCommand(String cmd) {
     digitalWrite(ENABLE_PIN, HIGH);
     motorsEnabled = false;
     Serial.println("OK");
+
   } else if (cmd == "CONT" && waitingForCont) {
     waitingForCont = false;
+
   } else if (cmd == "ABORT" && sweepActive) {
     sweepActive = false;
     waitingForCont = false;
     stepperX.stop();
     stepperY.stop();
-    Serial.println("OK");
-  } else if (cmd.startsWith("SPEED")) {
-    float speed;
-    if (parseFloat(cmd, 5, speed) && speed > 0) {
-      maxSpeed = speed;
-      stepperX.setMaxSpeed(speed);
-      stepperY.setMaxSpeed(speed);
-      Serial.println("OK");
-    } else {
-      Serial.println("ERR Invalid speed");
-    }
-  } else if (cmd.startsWith("TESTMOVE")) {
-    float x, y;
-    if (parseTwoFloats(cmd, 8, x, y)) {
-      if (!homedOK) {
-        Serial.println("ERR Not homed");
-        return;
-      }
-      moveToMM(x, y);
-      Serial.println("OK");
-    } else {
-      Serial.println("ERR Invalid TESTMOVE parameters");
-    }
+    Serial.println("Fin");
+
   } else if (cmd.startsWith("SWEEP")) {
     float x_max, y_max, res;
     if (parseThreeFloats(cmd, 5, x_max, y_max, res) && x_max > 0 && y_max > 0 && res > 0) {
-      if (!homedOK) {
-        Serial.println("ERR Not homed");
-        return;
-      }
       if (!motorsEnabled) {
         digitalWrite(ENABLE_PIN, LOW);
         motorsEnabled = true;
+      }
+      if (!homedOK) {
+        homeAll();
       }
       runSweep(x_max, y_max, res);
     } else {
@@ -243,7 +226,9 @@ void runSweep(float x_max, float y_max, float res) {
   }
   sweepActive = false;
   waitingForCont = false;
-  Serial.println("OK"); 
+  digitalWrite(ENABLE_PIN, HIGH);
+  motorsEnabled = false;
+  Serial.println("Fin"); 
 }
 
 void waitUntilDone(AccelStepper &s) {
