@@ -222,9 +222,11 @@ class MainWindow(QMainWindow):
         # Aquí aplicamos la configuración diferenciada:
         self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq", log_x=True, log_y=True)
         self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=True, log_y=False)
-        
+        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (µV) vs Freq", log_x=True, log_y=False)
+
         layout_2d.addWidget(self.plot_mag_2d)
         layout_2d.addWidget(self.plot_fase_2d)
+        layout_2d.addWidget(self.plot_quad_2d)
         self.stack_graficas.addWidget(self.widget_2d)
 
         # --- CONFIGURACIÓN INICIAL ---
@@ -382,8 +384,6 @@ class MainWindow(QMainWindow):
         # 1. Actualizar Gráficas
         if 'R' in data_dict:
             self.plotter_mag.actualizar_punto(x, y, data_dict['R'])
-            
-        # Reemplaza 'Theta' por la clave exacta que uses en tu diccionario para la fase
         if 'phi' in data_dict: 
             self.plotter_fase.actualizar_punto(x, y, data_dict['phi'])
         
@@ -400,7 +400,11 @@ class MainWindow(QMainWindow):
         # Limpiar gráficas 2D
         self.plot_mag_2d.limpiar()
         self.plot_fase_2d.limpiar()
+        self.plot_quad_2d.limpiar()
         
+        exp_id = self.db.iniciar_nuevo_experimento()
+        print(f"Iniciando guardado de datos en ID: {exp_id}")
+
         # Definir rango (puedes sacar esto de nuevos inputs o sliders)
         f_ini = 10.0 #frecuencia inicial
         f_fin = 10000.0 #frecuencia final
@@ -419,6 +423,8 @@ class MainWindow(QMainWindow):
             self.plot_mag_2d.actualizar(f, data_dict['R']) 
         if 'phi' in data_dict:
             self.plot_fase_2d.actualizar(f, data_dict['phi'])
+        if 'Y' in data_dict:
+            self.plot_quad_2d.actualizar(f, data_dict['Y'])
         
         # Guardar en DB (X=0, Y=0 para este experimento)
         self.db.guardar_punto(0.0, 0.0, data_dict, f)
@@ -533,32 +539,50 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Borrar", "No se pudo eliminar la medición.")
 
     def visualizar_medicion_seleccionada(self):
-        """Carga la medición seleccionada y la muestra en las gráficas 3D."""
+        """Carga y detecta automáticamente si el experimento es XY (3D) o Frecuencia (2D)."""
         exp_id = self.combo_mediciones.currentData()
-        if exp_id is None:
-            QMessageBox.information(self, "Visualizar", "Selecciona una medición del menú.")
+        if not exp_id:
+            QMessageBox.information(self, "Visualizar", "Selecciona una medición.")
             return
 
+        # Consultamos si hubo movimiento en la mesa (X, Y)
+        query_check = """
+            SELECT 
+                COUNT(DISTINCT x_pos) as dx, 
+                COUNT(DISTINCT y_pos) as dy
+            FROM mediciones WHERE experiment_id = ?
+        """
+        res = self.db_viewer.conn.execute(query_check, [exp_id]).fetchone()
+        num_x, num_y = res
+
+        # CRITERIO: Si la mesa se quedó quieta, es un barrido de frecuencia
+        if num_x <= 1 and num_y <= 1:
+            self._cargar_vista_2d(exp_id)
+        else:
+            self._cargar_vista_3d(exp_id)
+
+    def _cargar_vista_2d(self, exp_id):
+        """Lógica para los plotters 2D"""
+        data = self.db_viewer.cargar_medicion_2d(exp_id)
+        if data:
+            self.stack_graficas.setCurrentIndex(1) # Cambiar a la página 2D del stack
+            self.plot_mag_2d.set_datos_completos(data["freq"], data["mag"])
+            self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"])
+            self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"])
+            QMessageBox.information(self, "2D", f"Espectro '{exp_id}' cargado.")
+
+    def _cargar_vista_3d(self, exp_id):
+        """Lógica original para los plotters 3D"""
         data = self.db_viewer.cargar_medicion(exp_id)
-        if data is None:
-            data = self.db.cargar_medicion(exp_id)
-        if data is None:
-            QMessageBox.warning(self, "Error", f"No se pudo cargar la medición {exp_id}")
-            return
-
-        self.plotter_mag.cargar_datos_completos(
-            data["x_max"], data["y_max"], data["res"], data["z_mag"]
-        )
-        self.plotter_fase.cargar_datos_completos(
-            data["x_max"], data["y_max"], data["res"], data["z_fase"]
-        )
-        QMessageBox.information(self, "Visualizar", f"Medición {exp_id} cargada correctamente.")
-
-    def closeEvent(self, event):
-        self.emergency_stop()
-        self.db.cerrar()
-        self.db_viewer.cerrar()
-        event.accept()
+        if data:
+            self.stack_graficas.setCurrentIndex(0) # Cambiar a la página 3D del stack
+            self.plotter_mag.cargar_datos_completos(
+                data["x_max"], data["y_max"], data["res"], data["z_mag"]
+            )
+            self.plotter_fase.cargar_datos_completos(
+                data["x_max"], data["y_max"], data["res"], data["z_fase"]
+            )
+            QMessageBox.information(self, "3D", f"Mapa XY '{exp_id}' cargado.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

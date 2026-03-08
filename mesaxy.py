@@ -85,7 +85,7 @@ class MesaXY:
         # 5. CIERRE: Solo apagamos al terminar todo el barrido
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=True):
+    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
         """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""
         self._abort = False
         self.disable()

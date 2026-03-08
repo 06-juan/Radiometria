@@ -12,9 +12,6 @@ class Grafica2DRealTime(QWidget):
         self.plot_widget.setBackground('k')
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         
-        # --- LA CLAVE DEL CAMBIO ---
-        # Configuramos los ejes según la necesidad (Bode pide X log)
-        # Para Magnitud: log_y=True. Para Fase: log_y=False.
         self.plot_widget.setLogMode(x=log_x, y=log_y)
         
         # Curva de datos: Verde neón para que resalte
@@ -28,10 +25,16 @@ class Grafica2DRealTime(QWidget):
         self.z_data = []
         layout.addWidget(self.plot_widget)
 
+    def set_datos_completos(self, x_data, y_data):
+        """Renderizado instantáneo para datos históricos."""
+        self.x_data = list(x_data)
+        self.y_data = list(y_data)
+        self.curve.setData(self.x_data, self.y_data)
+        
     def limpiar(self):
-        """Reinicia los buffers de datos y limpia la curva"""
-        self.f_data = []
-        self.z_data = []
+        """Limpia los buffers de la gráfica."""
+        self.x_data = []
+        self.y_data = []
         self.curve.setData([], [])
 
     def actualizar(self, f, z):

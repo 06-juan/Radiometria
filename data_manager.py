@@ -166,6 +166,54 @@ class DataManager:
         except Exception as e:
             print(f"Error cargando medición {experiment_id}: {e}")
             return None
+        
+    def exportar_experimento_csv(self, experiment_id, filename=None):
+        """
+        Exporta un experimento específico a CSV usando el poder de DuckDB.
+        Si no se da nombre, usa el experiment_id.
+        """
+        if not filename:
+            filename = os.path.join(self.folder, f"{experiment_id}.csv")
+        
+        query = f"""
+        COPY (
+            SELECT * FROM mediciones 
+            WHERE experiment_id = '{experiment_id}'
+            ORDER BY timestamp ASC
+        ) TO '{filename}' (HEADER, DELIMITER ',');
+        """
+        try:
+            self.conn.execute(query)
+            print(f"Datos exportados a: {filename}")
+        except Exception as e:
+            print(f"Error al exportar CSV: {e}")
+
+    def cargar_medicion_2d(self, experiment_id):
+        """Extrae vectores de frecuencia, magnitud, fase y cuadratura."""
+        try:
+            # Seleccionamos las columnas de interés ordenadas por frecuencia
+            query = """
+                SELECT laser_freq, magnitude_r, phase_phi, ch_y 
+                FROM mediciones 
+                WHERE experiment_id = ? 
+                ORDER BY laser_freq ASC
+            """
+            rows = self.conn.execute(query, [experiment_id]).fetchall()
+            
+            if not rows: return None
+
+            import numpy as np
+            data = np.array(rows)
+            # Retornamos los arreglos de numpy para manipulación directa
+            return {
+                "freq": data[:, 0],
+                "mag":  data[:, 1],
+                "phi":  data[:, 2],
+                "quad": data[:, 3]
+            }
+        except Exception as e:
+            print(f"Error cargando datos 2D: {e}")
+            return None
 
     def _ruta_aliases(self):
         return os.path.join(self.folder, "aliases.json")
