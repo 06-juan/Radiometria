@@ -189,28 +189,41 @@ class DataManager:
             print(f"Error al exportar CSV: {e}")
 
     def cargar_medicion_2d(self, experiment_id):
-        """Extrae vectores de frecuencia, magnitud, fase y cuadratura."""
+        """Extrae vectores de frecuencia, magnitud, fase y cuadratura,
+        agrupados por x_pos (para los casos de múltiples puntos como CRUZ)."""
         try:
-            # Seleccionamos las columnas de interés ordenadas por frecuencia
+            # Seleccionamos las columnas de interés ordenadas por iterador de punto (x_pos) y frecuencia
             query = """
-                SELECT laser_freq, magnitude_r, phase_phi, ch_y 
+                SELECT x_pos, laser_freq, magnitude_r, phase_phi, ch_y 
                 FROM mediciones 
                 WHERE experiment_id = ? 
-                ORDER BY laser_freq ASC
+                ORDER BY x_pos ASC, laser_freq ASC
             """
             rows = self.conn.execute(query, [experiment_id]).fetchall()
             
             if not rows: return None
 
             import numpy as np
-            data = np.array(rows)
-            # Retornamos los arreglos de numpy para manipulación directa
-            return {
-                "freq": data[:, 0],
-                "mag":  data[:, 1],
-                "phi":  data[:, 2],
-                "quad": data[:, 3]
-            }
+            
+            # Agrupar por el iterador (x_pos)
+            curves = {}
+            for row in rows:
+                idx = float(row[0])
+                if idx not in curves:
+                    curves[idx] = {"freq": [], "mag": [], "phi": [], "quad": []}
+                curves[idx]["freq"].append(row[1])
+                curves[idx]["mag"].append(row[2])
+                curves[idx]["phi"].append(row[3])
+                curves[idx]["quad"].append(row[4])
+
+            # Convertir todas las listas de las curvas en arrays
+            for k in curves.keys():
+                curves[k]["freq"] = np.array(curves[k]["freq"])
+                curves[k]["mag"] = np.array(curves[k]["mag"])
+                curves[k]["phi"] = np.array(curves[k]["phi"])
+                curves[k]["quad"] = np.array(curves[k]["quad"])
+
+            return curves
         except Exception as e:
             print(f"Error cargando datos 2D: {e}")
             return None

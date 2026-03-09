@@ -21,6 +21,7 @@ class SR830:
             12: 10.0, 13: 30.0, 14: 100.0, 15: 300.0
         }
         self.current_tc_val = 1.0 # Valor por defecto inicial
+        self.tiempo_espera = 3.0 # Valor por defecto inicial para evitar AttributeError
 
     def set_amplitude(self, voltage):
         self.inst.write(f'SLVL {voltage}')

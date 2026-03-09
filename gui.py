@@ -87,6 +87,28 @@ class FreqWorkerThread(QThread):
             self.data_signal.emit(f, z_data)
         self.finished_signal.emit()
 
+class CruzWorkerThread(QThread):
+    data_signal = pyqtSignal(int, float, dict) # punto_idx, frecuencia, datos
+    finished_signal = pyqtSignal()
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, mesa, x_max, y_max, f_start, f_end, steps):
+        super().__init__()
+        self.mesa = mesa
+        self.x_max = x_max
+        self.y_max = y_max
+        self.f_start = f_start
+        self.f_end = f_end
+        self.steps = steps
+
+    def run(self):
+        try:
+            for pt_idx, f, z_data in self.mesa.cruz_frequency_generator(self.x_max, self.y_max, self.f_start, self.f_end, self.steps):
+                self.data_signal.emit(pt_idx, f, z_data)
+            self.finished_signal.emit()
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -159,6 +181,12 @@ class MainWindow(QMainWindow):
         self.btn_frecuency.clicked.connect(self.start_measurement_frecuency)
         self.btn_frecuency.setEnabled(False)
         ctrl_layout.addWidget(self.btn_frecuency)
+
+        self.btn_cruz = QPushButton("BARRIDO CRUZ (5 Puntos)")
+        self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
+        self.btn_cruz.clicked.connect(self.start_measurement_cruz)
+        self.btn_cruz.setEnabled(False)
+        ctrl_layout.addWidget(self.btn_cruz)
 
         # Botón de Pánico
         self.btn_stop = QPushButton("STOP / DESCONECTAR")
@@ -336,6 +364,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setText("HOMED")
         self.btn_measure.setEnabled(True)
         self.btn_frecuency.setEnabled(True)
+        self.btn_cruz.setEnabled(True)
         print("Mesa en posición de origen.")
 
     def on_home_error(self, error):
@@ -429,6 +458,47 @@ class MainWindow(QMainWindow):
         # Guardar en DB (X=0, Y=0 para este experimento)
         self.db.guardar_punto(0.0, 0.0, data_dict, f)
 
+    def start_measurement_cruz(self):
+        """Inicia Barrido en Cruz (5 Puntos) con barridos de frecuencia en cada uno"""
+        self.btn_cruz.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
+        if not self.mesa: return
+        self.stack_graficas.setCurrentIndex(1) # Mostrar 2D
+        
+        # Limpiar gráficas 2D
+        self.plot_mag_2d.limpiar()
+        self.plot_fase_2d.limpiar()
+        self.plot_quad_2d.limpiar()
+        
+        exp_id = self.db.iniciar_nuevo_experimento()
+        print(f"Iniciando guardado de datos en ID: {exp_id}")
+
+        x_max = self.slider_x.value() / 10.0
+        y_max = self.slider_y.value() / 10.0
+        
+        f_ini = 100.0 
+        f_fin = 1000.0 
+        pasos = 100  
+        
+        self.toggle_inputs(False)
+        
+        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, f_ini, f_fin, pasos)
+        self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
+        self.worker_cruz.finished_signal.connect(self.measurement_finished)
+        self.worker_cruz.error_signal.connect(self.measurement_error)
+        self.worker_cruz.start()
+
+    def handle_new_cruz_data(self, idx, f, data_dict):
+        """Actualiza las gráficas 2D en tiempo real para el punto idx"""
+        if 'R' in data_dict:
+            self.plot_mag_2d.actualizar(f, data_dict['R'], curve_idx=idx) 
+        if 'phi' in data_dict:
+            self.plot_fase_2d.actualizar(f, data_dict['phi'], curve_idx=idx)
+        if 'Y' in data_dict:
+            self.plot_quad_2d.actualizar(f, data_dict['Y'], curve_idx=idx)
+        
+        # Guardaremos el indice en 'x' temporalmente para diferenciar los puntos
+        self.db.guardar_punto(float(idx), 0.0, data_dict, f)
+
     def emergency_stop(self):
         if self.worker and self.worker.isRunning():
             self.mesa.stop_current_operation()
@@ -441,6 +511,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
+        self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
 
         # Reajustar estado de controles: solo permitir volver a HOME
         self.slider_x.setEnabled(True)
@@ -450,6 +521,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(True)
         self.btn_measure.setEnabled(False)
         self.btn_frecuency.setEnabled(False)
+        self.btn_cruz.setEnabled(False)
 
         self.toggle_inputs(True)
 
@@ -471,6 +543,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(enable)
         self.btn_measure.setEnabled(enable)
         self.btn_frecuency.setEnabled(enable)
+        self.btn_cruz.setEnabled(enable)
 
     def _refrescar_combo_mediciones(self):
         """Recarga el listado de mediciones disponibles en el combo."""
@@ -545,31 +618,38 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Visualizar", "Selecciona una medición.")
             return
 
-        # Consultamos si hubo movimiento en la mesa (X, Y)
+        # CRITERIO ROBUSTO: Evaluamos la cantidad de frecuencias distintas medidas.
+        # Si > 1 es un barrido 2D de frecuencia (puntual o tipo CRUZ). Si es <= 1 es mapeo 3D.
         query_check = """
-            SELECT 
-                COUNT(DISTINCT x_pos) as dx, 
-                COUNT(DISTINCT y_pos) as dy
+            SELECT COUNT(DISTINCT laser_freq) as d_freq
             FROM mediciones WHERE experiment_id = ?
         """
         res = self.db_viewer.conn.execute(query_check, [exp_id]).fetchone()
-        num_x, num_y = res
+        num_freq = res[0]
 
-        # CRITERIO: Si la mesa se quedó quieta, es un barrido de frecuencia
-        if num_x <= 1 and num_y <= 1:
+        if num_freq > 1:
             self._cargar_vista_2d(exp_id)
         else:
             self._cargar_vista_3d(exp_id)
 
     def _cargar_vista_2d(self, exp_id):
-        """Lógica para los plotters 2D"""
-        data = self.db_viewer.cargar_medicion_2d(exp_id)
-        if data:
+        """Lógica para los plotters 2D iterando posibles múltiples curvas"""
+        curves_data = self.db_viewer.cargar_medicion_2d(exp_id)
+        if curves_data:
             self.stack_graficas.setCurrentIndex(1) # Cambiar a la página 2D del stack
-            self.plot_mag_2d.set_datos_completos(data["freq"], data["mag"])
-            self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"])
-            self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"])
-            QMessageBox.information(self, "2D", f"Espectro '{exp_id}' cargado.")
+            self.plot_mag_2d.limpiar()
+            self.plot_fase_2d.limpiar()
+            self.plot_quad_2d.limpiar()
+
+            # Iteramos sobre el diccionario (índices o posiciones guardadas)
+            curve_idx = 0
+            for idx_punto, data in curves_data.items():
+                self.plot_mag_2d.set_datos_completos(data["freq"], data["mag"], curve_idx=curve_idx)
+                self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"], curve_idx=curve_idx)
+                self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=curve_idx)
+                curve_idx += 1
+                
+            QMessageBox.information(self, "2D", f"Espectro '{exp_id}' cargado con {len(curves_data)} curva(s).")
 
     def _cargar_vista_3d(self, exp_id):
         """Lógica original para los plotters 3D"""

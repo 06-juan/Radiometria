@@ -111,6 +111,62 @@ class MesaXY:
             
         print("Barrido de frecuencia terminado.")
     
+    def cruz_frequency_generator(self, x_max, y_max, f_start, f_end, steps, log_space=False):
+        """Barrido en frecuencia en los 5 puntos de alineación (CRUZ)."""
+        self._abort = False
+        
+        # 1. PREPARACIÓN: Encendemos el láser ANTES de empezar el movimiento
+        self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+        time.sleep(self.lockin.tiempo_espera * 2) 
+
+        # 2. INICIO DEL COMANDO
+        cmd = f"CRUZ {x_max} {y_max}"
+        self._send_command(cmd)
+        
+        if log_space:
+            freqs = np.logspace(np.log10(f_start), np.log10(f_end), steps)
+        else:
+            freqs = np.linspace(f_start, f_end, steps)
+            
+        punto_actual = 0
+        
+        while not self._abort:
+            if self.ser.in_waiting:
+                line = self.ser.readline().decode('utf-8').strip()
+                if not line: continue
+                
+                if line.startswith("POS"):
+                    pass # Podríamos extraer la posición si se requiere
+                elif line == "LASER":
+                    if self._abort: break
+                    
+                    # 3. Barrido de Frecuencia en este punto
+                    for f in freqs:
+                        if self._abort: break
+                        self.ajustar_frecuencia(f)
+                        self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                        time.sleep(self.lockin.tiempo_espera) 
+                        z_data = self.lockin.get_measurements()
+                        
+                        # Enviamos índice del punto (para curva distinta en GUI)
+                        yield punto_actual, f, z_data
+                        
+                        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+                        time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
+                    
+                    punto_actual += 1
+                    
+                    # Le pedimos al Arduino que continúe al siguiente punto
+                    self._send_command("CONT")
+
+                elif line == "Fin": 
+                    break
+            else:
+                time.sleep(0.001)
+
+        print("Barrido en cruz terminado.")
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+
     def stop_current_operation(self):
         """Detenemos bucle de medicion"""
         self._abort = True
