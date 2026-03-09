@@ -407,8 +407,8 @@ class MainWindow(QMainWindow):
 
         # Definir rango (puedes sacar esto de nuevos inputs o sliders)
         f_ini = 10.0 #frecuencia inicial
-        f_fin = 10000.0 #frecuencia final
-        pasos = 300  #nuemero de mediciones
+        f_fin = 1000.0 #frecuencia final
+        pasos = 200  #nuemero de mediciones
         
         self.toggle_inputs(False)
         

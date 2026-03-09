@@ -38,8 +38,11 @@ class SR830:
         # Evitar división por cero
         if freq <= 0: return
         
-        periodo_objetivo = 5.0 / freq #de 5 a 10
+        periodo_objetivo = 10.0 / freq #de 5 a 10
         
+        #if periodo_objetivo <= 0.03: 
+        #    periodo_objetivo = 0.03
+
         # Buscamos el índice más pequeño cuyo valor sea >= al periodo objetivo
         indice_optimo = 15 # Empezamos por el máximo por seguridad
         for i in sorted(self.TC_MAP.keys()):
@@ -56,7 +59,10 @@ class SR830:
         self.tiempo_espera = 3 * self.current_tc_val
         print(f"[SR830] Freq: {freq:.2f}Hz -> TC auto-set: {self.current_tc_val}s (Idx: {indice_optimo})")
         print(f"[SR830] Esperando {self.tiempo_espera:.3f}s para estabilización...")
-        time.sleep(self.tiempo_espera)
+        if self.tiempo_espera >= 0.03:
+            time.sleep(self.tiempo_espera * 2)
+        else: 
+            time.sleep(0.03)
 
     def get_measurements(self):
         """Obtiene X, Y, R y Phase usando el comando SNAP (sincronizado)."""

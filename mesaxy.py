@@ -8,7 +8,7 @@ except ImportError:
 
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
-        self.TIEMPO_DE_RELAJACION_TERMICA = 0.05 #tiempo entre mediciones de frecuencia, talvez no sea necesario
+        self.TIEMPO_DE_RELAJACION_TERMICA = 0.0 #tiempo entre mediciones de frecuencia, talvez no sea necesario
         self.lockin = SR830()
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self._abort = False
