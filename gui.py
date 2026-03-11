@@ -248,13 +248,13 @@ class MainWindow(QMainWindow):
         layout_2d = QHBoxLayout(self.widget_2d)
 
         # Aquí aplicamos la configuración diferenciada:
-        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq", log_x=True, log_y=True)
-        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=True, log_y=False)
-        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (µV) vs Freq", log_x=True, log_y=False)
+        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq", log_x=False, log_y=False)
+        #self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=True, log_y=False)
+        #self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (µV) vs Freq", log_x=True, log_y=False)
 
         layout_2d.addWidget(self.plot_mag_2d)
-        layout_2d.addWidget(self.plot_fase_2d)
-        layout_2d.addWidget(self.plot_quad_2d)
+        #layout_2d.addWidget(self.plot_fase_2d)
+        #layout_2d.addWidget(self.plot_quad_2d)
         self.stack_graficas.addWidget(self.widget_2d)
 
         # --- CONFIGURACIÓN INICIAL ---
@@ -428,8 +428,8 @@ class MainWindow(QMainWindow):
         
         # Limpiar gráficas 2D
         self.plot_mag_2d.limpiar()
-        self.plot_fase_2d.limpiar()
-        self.plot_quad_2d.limpiar()
+        #self.plot_fase_2d.limpiar()
+        #self.plot_quad_2d.limpiar()
         
         exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Iniciando guardado de datos en ID: {exp_id}")
@@ -450,10 +450,10 @@ class MainWindow(QMainWindow):
         """Actualiza las gráficas 2D en tiempo real"""
         if 'R' in data_dict:
             self.plot_mag_2d.actualizar(f, data_dict['R']) 
-        if 'phi' in data_dict:
-            self.plot_fase_2d.actualizar(f, data_dict['phi'])
-        if 'Y' in data_dict:
-            self.plot_quad_2d.actualizar(f, data_dict['Y'])
+        #if 'phi' in data_dict:
+            #self.plot_fase_2d.actualizar(f, data_dict['phi'])
+       #if 'Y' in data_dict:
+            #self.plot_quad_2d.actualizar(f, data_dict['Y'])
         
         # Guardar en DB (X=0, Y=0 para este experimento)
         self.db.guardar_punto(0.0, 0.0, data_dict, f)
@@ -466,8 +466,8 @@ class MainWindow(QMainWindow):
         
         # Limpiar gráficas 2D
         self.plot_mag_2d.limpiar()
-        self.plot_fase_2d.limpiar()
-        self.plot_quad_2d.limpiar()
+        #self.plot_fase_2d.limpiar()
+        #self.plot_quad_2d.limpiar()
         
         exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Iniciando guardado de datos en ID: {exp_id}")
@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 100.0 
+        f_ini = 9.0 
         f_fin = 1000.0 
         pasos = 100  
         
@@ -491,10 +491,10 @@ class MainWindow(QMainWindow):
         """Actualiza las gráficas 2D en tiempo real para el punto idx"""
         if 'R' in data_dict:
             self.plot_mag_2d.actualizar(f, data_dict['R'], curve_idx=idx) 
-        if 'phi' in data_dict:
-            self.plot_fase_2d.actualizar(f, data_dict['phi'], curve_idx=idx)
-        if 'Y' in data_dict:
-            self.plot_quad_2d.actualizar(f, data_dict['Y'], curve_idx=idx)
+        #if 'phi' in data_dict:
+            #self.plot_fase_2d.actualizar(f, data_dict['phi'], curve_idx=idx)
+        #if 'Y' in data_dict:
+            #self.plot_quad_2d.actualizar(f, data_dict['Y'], curve_idx=idx)
         
         # Guardaremos el indice en 'x' temporalmente para diferenciar los puntos
         self.db.guardar_punto(float(idx), 0.0, data_dict, f)
@@ -632,21 +632,23 @@ class MainWindow(QMainWindow):
         else:
             self._cargar_vista_3d(exp_id)
 
+        self.db.exportar_experimento_csv(exp_id,"data/datos_experimento")
+
     def _cargar_vista_2d(self, exp_id):
         """Lógica para los plotters 2D iterando posibles múltiples curvas"""
         curves_data = self.db_viewer.cargar_medicion_2d(exp_id)
         if curves_data:
             self.stack_graficas.setCurrentIndex(1) # Cambiar a la página 2D del stack
             self.plot_mag_2d.limpiar()
-            self.plot_fase_2d.limpiar()
-            self.plot_quad_2d.limpiar()
+            #self.plot_fase_2d.limpiar()
+            #self.plot_quad_2d.limpiar()
 
             # Iteramos sobre el diccionario (índices o posiciones guardadas)
             curve_idx = 0
             for idx_punto, data in curves_data.items():
                 self.plot_mag_2d.set_datos_completos(data["freq"], data["mag"], curve_idx=curve_idx)
-                self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"], curve_idx=curve_idx)
-                self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=curve_idx)
+                #self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"], curve_idx=curve_idx)
+                #self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=curve_idx)
                 curve_idx += 1
                 
             QMessageBox.information(self, "2D", f"Espectro '{exp_id}' cargado con {len(curves_data)} curva(s).")

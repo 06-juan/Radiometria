@@ -253,56 +253,7 @@ void waitUntilDone(AccelStepper &s) {
   }
 }
 
-void homeAxis(AccelStepper &st, int limitPin, float stepsPerMM, float offsetMM,
-              int homeDir, float coarseSpeed, float fineSpeed, float accel) {
-  long oneMM = (long)round(stepsPerMM);
-  long offsetSteps = (long)round(offsetMM * stepsPerMM);
-  int awayDir = -homeDir;
-
-  // Asegurar aceleración
-  st.setAcceleration(accel);
-
-  // 1) Alejar 1 mm para liberar switch
-  st.setMaxSpeed(coarseSpeed);
-  st.move(awayDir * oneMM);
-  waitUntilDone(st);
-  delay(20);
-  Serial.println("DBG Moved away 1 mm");
-
-  // 2) Aproximación rápida
-  st.setMaxSpeed(coarseSpeed);
-  st.move(homeDir * 100000L); // Movimiento largo hacia el switch
-  while (digitalRead(limitPin) == HIGH && st.distanceToGo() != 0) {
-    st.run();
-  }
-  st.stop();
-  waitUntilDone(st);
-  Serial.println("DBG Coarse approach done");
-
-  // 3) Retroceder 1 mm
-  st.setMaxSpeed(coarseSpeed);
-  st.move(awayDir * oneMM * 1.2);
-  waitUntilDone(st);
-  delay(20);
-  Serial.println("DBG Moved back 1 mm");
-
-  // 4) Aproximación fina
-  st.setMaxSpeed(fineSpeed);
-  st.move(homeDir * 100000L);
-  while (digitalRead(limitPin) == HIGH && st.distanceToGo() != 0) {
-    st.run();
-  }
-  st.stop();
-  waitUntilDone(st);
-  Serial.println("DBG Fine approach done");
-
-  // 5) Aplicar offset y fijar cero
-  st.setMaxSpeed(coarseSpeed);
-  st.move(awayDir * offsetSteps);
-  waitUntilDone(st);
-  st.setCurrentPosition(0);
-  Serial.println("DBG Offset applied, position set to 0");
-}
+// Función homeAxis reemplazada por la lógica simultánea en homeAll
 
 void run5PointCheck(float x_max, float y_max) {
   sweepActive = true; // Usamos este flag para poder abortar si es necesario
@@ -324,11 +275,132 @@ void run5PointCheck(float x_max, float y_max) {
 }
 
 void homeAll() {
-  Serial.println("DBG Starting homing");
-  homeAxis(stepperX, X_LIMIT_PIN, STEPS_PER_MM_X, X_OFFSET_MM, X_HOME_DIR,
-           COARSE_SPEED_X, FINE_SPEED_X, HOME_ACCEL_X);
-  homeAxis(stepperY, Y_LIMIT_PIN, STEPS_PER_MM_Y, Y_OFFSET_MM, Y_HOME_DIR,
-           COARSE_SPEED_Y, FINE_SPEED_Y, HOME_ACCEL_Y);
+  Serial.println("DBG Starting simultaneous homing");
+  
+  long oneMM_X = (long)round(STEPS_PER_MM_X);
+  long oneMM_Y = (long)round(STEPS_PER_MM_Y);
+  long offsetSteps_X = (long)round(X_OFFSET_MM * STEPS_PER_MM_X);
+  long offsetSteps_Y = (long)round(Y_OFFSET_MM * STEPS_PER_MM_Y);
+  
+  int awayDirX = -X_HOME_DIR;
+  int awayDirY = -Y_HOME_DIR;
+  
+  stepperX.setAcceleration(HOME_ACCEL_X);
+  stepperY.setAcceleration(HOME_ACCEL_Y);
+
+  // 1) Alejar 1 mm para liberar switch
+  stepperX.setMaxSpeed(COARSE_SPEED_X);
+  stepperY.setMaxSpeed(COARSE_SPEED_Y);
+  stepperX.move(awayDirX * oneMM_X);
+  stepperY.move(awayDirY * oneMM_Y);
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+    stepperX.run();
+    stepperY.run();
+  }
+  delay(20);
+  Serial.println("DBG Moved away 1 mm");
+
+  // 2) Aproximación rápida
+  stepperX.setMaxSpeed(COARSE_SPEED_X);
+  stepperY.setMaxSpeed(COARSE_SPEED_Y);
+  stepperX.move(X_HOME_DIR * 100000L);
+  stepperY.move(Y_HOME_DIR * 100000L);
+  bool xHomingDone = false;
+  bool yHomingDone = false;
+
+  while ((!xHomingDone && stepperX.distanceToGo() != 0) || (!yHomingDone && stepperY.distanceToGo() != 0)) {
+    if (!xHomingDone) {
+      if (digitalRead(X_LIMIT_PIN) == LOW) { // LOW es switch presionado
+        stepperX.stop();
+        xHomingDone = true;
+      } else {
+        stepperX.run();
+      }
+    } else {
+       stepperX.run();
+    }
+    
+    if (!yHomingDone) {
+      if (digitalRead(Y_LIMIT_PIN) == LOW) {
+        stepperY.stop();
+        yHomingDone = true;
+      } else {
+        stepperY.run();
+      }
+    } else {
+       stepperY.run();
+    }
+  }
+  // Esperar a que terminen de frenar
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+      stepperX.run();
+      stepperY.run();
+  }
+  Serial.println("DBG Coarse approach done");
+
+  // 3) Retroceder 1 mm
+  stepperX.setMaxSpeed(COARSE_SPEED_X);
+  stepperY.setMaxSpeed(COARSE_SPEED_Y);
+  stepperX.move(awayDirX * oneMM_X * 1.2);
+  stepperY.move(awayDirY * oneMM_Y * 1.2);
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+    stepperX.run();
+    stepperY.run();
+  }
+  delay(20);
+  Serial.println("DBG Moved back 1 mm");
+
+  // 4) Aproximación fina
+  stepperX.setMaxSpeed(FINE_SPEED_X);
+  stepperY.setMaxSpeed(FINE_SPEED_Y);
+  stepperX.move(X_HOME_DIR * 100000L);
+  stepperY.move(Y_HOME_DIR * 100000L);
+  xHomingDone = false;
+  yHomingDone = false;
+
+  while ((!xHomingDone && stepperX.distanceToGo() != 0) || (!yHomingDone && stepperY.distanceToGo() != 0)) {
+    if (!xHomingDone) {
+      if (digitalRead(X_LIMIT_PIN) == LOW) {
+        stepperX.stop();
+        xHomingDone = true;
+      } else {
+        stepperX.run();
+      }
+    } else {
+       stepperX.run();
+    }
+    
+    if (!yHomingDone) {
+      if (digitalRead(Y_LIMIT_PIN) == LOW) {
+        stepperY.stop();
+        yHomingDone = true;
+      } else {
+        stepperY.run();
+      }
+    } else {
+       stepperY.run();
+    }
+  }
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+      stepperX.run();
+      stepperY.run();
+  }
+  Serial.println("DBG Fine approach done");
+
+  // 5) Aplicar offset y fijar cero
+  stepperX.setMaxSpeed(COARSE_SPEED_X);
+  stepperY.setMaxSpeed(COARSE_SPEED_Y);
+  stepperX.move(awayDirX * offsetSteps_X);
+  stepperY.move(awayDirY * offsetSteps_Y);
+  while (stepperX.distanceToGo() != 0 || stepperY.distanceToGo() != 0) {
+    stepperX.run();
+    stepperY.run();
+  }
+  
+  stepperX.setCurrentPosition(0);
+  stepperY.setCurrentPosition(0);
+  Serial.println("DBG Offset applied, position set to 0");
+  
   homedOK = true;
   Serial.println("HOMED");
 }

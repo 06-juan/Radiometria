@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer
 
 class Grafica2DRealTime(QWidget):
-    def __init__(self, titulo="Gráfica 2D", log_x=True, log_y=False):
+    def __init__(self, titulo="Gráfica 2D", log_x=False, log_y=False):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0) # Aprovechar mejor el espacio
