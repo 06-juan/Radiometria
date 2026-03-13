@@ -475,9 +475,9 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 9.0 
+        f_ini = 10.0 
         f_fin = 1000.0 
-        pasos = 100  
+        pasos = 50
         
         self.toggle_inputs(False)
         

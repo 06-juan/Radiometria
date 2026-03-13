@@ -14,6 +14,7 @@ class MesaXY:
         self._abort = False
         time.sleep(1) 
         self._wait_for_ready()
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
     def _wait_for_ready(self):
         start_time = time.time()
@@ -114,12 +115,8 @@ class MesaXY:
     def cruz_frequency_generator(self, x_max, y_max, f_start, f_end, steps, log_space=False):
         """Barrido en frecuencia en los 5 puntos de alineación (CRUZ)."""
         self._abort = False
-        
-        # 1. PREPARACIÓN: Encendemos el láser ANTES de empezar el movimiento
-        self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-        time.sleep(self.lockin.tiempo_espera * 2) 
 
-        # 2. INICIO DEL COMANDO
+        # 1. INICIO DEL COMANDO
         cmd = f"CRUZ {x_max} {y_max}"
         self._send_command(cmd)
         
@@ -140,20 +137,21 @@ class MesaXY:
                 elif line == "LASER":
                     if self._abort: break
                     
+                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:
                         if self._abort: break
                         self.ajustar_frecuencia(f)
-                        self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                        
                         time.sleep(self.lockin.tiempo_espera) 
                         z_data = self.lockin.get_measurements()
                         
                         # Enviamos índice del punto (para curva distinta en GUI)
                         yield punto_actual, f, z_data
                         
-                        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-                        time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
-                    
+                        
+                        #time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
+                    self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
                     punto_actual += 1
                     
                     # Le pedimos al Arduino que continúe al siguiente punto
@@ -175,6 +173,7 @@ class MesaXY:
         self._send_command("EN_OFF")
 
     def home(self):
+        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         self._send_command("HOME")
         self._wait_for_ready()
 

@@ -28,7 +28,7 @@ class SR830:
         if freq <= 0: return
         self.inst.write(f'FREQ {freq}')
         
-        if self.tc_constante:
+        if self.tc_constante and freq >= 100:
             self._set_tc_fija(8) # Índice 9 = 300 ms
         else:
             self._ajustar_tc_automatico(freq)
@@ -39,7 +39,6 @@ class SR830:
         self.current_tc_val = self.TC_MAP[indice]
         self.tiempo_espera = 5 * self.current_tc_val
         
-        print(f"[SR830] MODO FIJO: TC set a {self.current_tc_val}s")
         time.sleep(self.tiempo_espera)
 
     def _ajustar_tc_automatico(self, freq):
@@ -72,7 +71,10 @@ class SR830:
             return None
 
     def set_amplitude(self,voltage):
-        self.inst.write(f'SLVL{voltage}')
+        """Usamos el aux out 3 y una puerta and para encender y apagar el laser
+        ya que TTL out no se puede detener"""
+        self.inst.write(f'AUXV 3, {voltage}')
+        print(f'voltaje a {voltage}')
         
     def close(self):
         self.inst.close()
@@ -84,11 +86,13 @@ if __name__ == "__main__":
         # Para el barrido XY, mejor tc_constante=True
         lockin = SR830(tc_constante=True)
         
-        for f in [100, 300, 500, 700]:
-            lockin.set_frequency(f)
-            datos = lockin.get_measurements()
-            print(f"Resultado a {f}Hz: {datos}")
+        #for f in [100, 300, 500, 700]:
+            #lockin.set_frequency(f)
+            #datos = lockin.get_measurements()
+            #print(f"Resultado a {f}Hz: {datos}")
             
-        lockin.close()
+        #lockin.close()
+        lockin.set_amplitude(LASER_ON_VOLTAGE)
+        #lockin.set_amplitude(LASER_OFF_VOLTAGE)
     except Exception as e:
         print(f"Falla de conexión: {e}")
