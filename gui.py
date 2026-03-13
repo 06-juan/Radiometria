@@ -71,22 +71,6 @@ class ConnectWorker(QThread):
         except Exception as e:
             self.error_signal.emit(str(e))
 
-class FreqWorkerThread(QThread):
-    data_signal = pyqtSignal(float, dict) # frecuencia, datos
-    finished_signal = pyqtSignal()
-
-    def __init__(self, mesa, f_start, f_end, steps):
-        super().__init__()
-        self.mesa = mesa
-        self.f_start = f_start
-        self.f_end = f_end
-        self.steps = steps
-
-    def run(self):
-        for f, z_data in self.mesa.sweep_frequency_generator(self.f_start, self.f_end, self.steps):
-            self.data_signal.emit(f, z_data)
-        self.finished_signal.emit()
-
 class CruzWorkerThread(QThread):
     data_signal = pyqtSignal(int, float, dict) # punto_idx, frecuencia, datos
     finished_signal = pyqtSignal()
@@ -122,6 +106,9 @@ class MainWindow(QMainWindow):
         self.db = DataManager()
         self.db_viewer = DataManager(folder="data")
         self.current_freq = 0.0
+
+        self.is_homed = False
+        self.pending_task = None
 
         self.init_ui()
 
@@ -172,14 +159,14 @@ class MainWindow(QMainWindow):
 
         self.btn_measure = QPushButton("INICIAR MEDICIÓN")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
-        self.btn_measure.clicked.connect(self.start_measurement)
-        self.btn_measure.setEnabled(False)
+        self.btn_measure.clicked.connect(lambda: self.ensure_home_then_do(self.start_measurement))
+        self.btn_measure.setEnabled(True)
         ctrl_layout.addWidget(self.btn_measure)
 
-        self.btn_cruz = QPushButton("BARRIDO CRUZ (5 Puntos)")
+        self.btn_cruz = QPushButton("BARRIDO Frecuencia(5 Puntos)")
         self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
-        self.btn_cruz.clicked.connect(self.start_measurement_cruz)
-        self.btn_cruz.setEnabled(False)
+        self.btn_cruz.clicked.connect(lambda: self.ensure_home_then_do(self.start_measurement_cruz))
+        self.btn_cruz.setEnabled(True)
         ctrl_layout.addWidget(self.btn_cruz)
 
         # Botón de Pánico
@@ -253,6 +240,14 @@ class MainWindow(QMainWindow):
 
         # --- CONFIGURACIÓN INICIAL ---
         self.stack_graficas.setCurrentIndex(0) # Forzamos que inicie en 3D
+
+    def ensure_home_then_do(self, task_function):
+        """Verifica si estamos en home; si no, lo hace y guarda la tarea pendiente."""
+        if self.is_homed:
+            task_function()
+        else:
+            self.pending_task = task_function
+            self.go_home()
 
     def crear_slider(self, min_v, max_v, init_v, func):
         s = QSlider(Qt.Orientation.Horizontal)
@@ -354,11 +349,21 @@ class MainWindow(QMainWindow):
 
     def on_home_finished(self):
         """Se ejecuta cuando la mesa ya está en (0,0)"""
+        self.is_homed = True
         self.btn_home.setEnabled(True)
         self.btn_home.setText("HOMED")
+        self.btn_home.setStyleSheet("background: #4CAF50; color: white; padding: 8px; font-weight: bold;")
+        
         self.btn_measure.setEnabled(True)
+        self.btn_frecuency.setEnabled(True)
         self.btn_cruz.setEnabled(True)
         print("Mesa en posición de origen.")
+
+        # Si había una tarea esperando, la ejecutamos y limpiamos la variable
+        if self.pending_task:
+            task = self.pending_task
+            self.pending_task = None
+            task()
 
     def on_home_error(self, error):
         """Si algo falla durante el movimiento"""
@@ -514,6 +519,10 @@ class MainWindow(QMainWindow):
         self.btn_cruz.setEnabled(False)
 
         self.toggle_inputs(True)
+
+        self.is_homed = False
+        self.pending_task = None
+
 
 
     def measurement_finished(self):
