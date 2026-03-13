@@ -4,8 +4,8 @@ if not hasattr(np, 'product'):
     np.product = np.prod
 
 import pyqtgraph.opengl as gl
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
-from PyQt6.QtGui import QVector3D, QFont
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QDialog
+from PyQt6.QtGui import QVector3D, QFont, QKeySequence, QShortcut
 from PyQt6.QtCore import QTimer, QEvent, Qt
 import matplotlib.pyplot as plt
 
@@ -253,11 +253,15 @@ class Grafica3DRealTime(QWidget):
             self.z_label.setData(pos=(0, 0, z_visual_range * 1.2), text=self.titulo_z_texto)
 
     def eventFilter(self, obj, event):
-        """Arrastrar con botón derecho para ajustar la escala del eje Z."""
+        """Arrastrar con botón derecho para escalar Z, doble clic izquierdo para pantalla completa."""
         if obj != self.view:
             return False
 
         t = event.type()
+        
+        if t == QEvent.Type.MouseButtonDblClick and event.button() == Qt.MouseButton.LeftButton:
+            self.toggle_fullscreen()
+            return True
         if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
             self._z_scale_dragging = True
             self._z_scale_last_y = event.position().y() if hasattr(event, 'position') else event.pos().y()
@@ -345,6 +349,37 @@ class Grafica3DRealTime(QWidget):
         
         # Calculamos la escala visual final
         self._recalcular_superficie()
+
+    def toggle_fullscreen(self):
+        """Mueve el widget a un diálogo a pantalla completa y permite regresar con Esc."""
+        if hasattr(self, 'dialogo_fs') and self.dialogo_fs.isVisible():
+            return
+
+        # Guardar el layout padre original de MainWindow
+        self.layout_original = self.parentWidget().layout() if self.parentWidget() else None
+        if not self.layout_original:
+            return
+
+        self.dialogo_fs = QDialog(self.window())
+        self.dialogo_fs.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        layout_fs = QVBoxLayout(self.dialogo_fs)
+        layout_fs.setContentsMargins(0, 0, 0, 0)
+        
+        # Al añadirlo aquí, PyQt lo extrae automáticamente de su layout original
+        layout_fs.addWidget(self)
+        
+        # Retornarlo a su lugar al cerrar
+        def al_cerrar(event):
+            self.layout_original.addWidget(self)
+            event.accept()
+            
+        self.dialogo_fs.closeEvent = al_cerrar
+        
+        # Cerrar con ESC
+        atajo = QShortcut(QKeySequence("Esc"), self.dialogo_fs)
+        atajo.activated.connect(self.dialogo_fs.close)
+        
+        self.dialogo_fs.showFullScreen()
 
 
 # ---------------------------------------------------------

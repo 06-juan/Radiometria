@@ -1,6 +1,7 @@
 import pyqtgraph as pg
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QDialog
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 class Grafica2DRealTime(QWidget):
     def __init__(self, titulo="Gráfica 2D", log_x=False, log_y=False):
@@ -45,7 +46,10 @@ class Grafica2DRealTime(QWidget):
         layout.addWidget(self.plot_widget)
 
     def _on_clicked(self, event):
-        """Muestra coordenadas al hacer click"""
+        "Muestra coordenadas al hacer click, o pantalla completa al hacer doble clic"""
+        if event.double() and event.button() == Qt.MouseButton.LeftButton:
+            self.toggle_fullscreen()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.scenePos()
             if self.plot_widget.sceneBoundingRect().contains(pos):
@@ -60,7 +64,7 @@ class Grafica2DRealTime(QWidget):
                 self.label.setPos(x, y)
                 self.label.show()
                 # Ocultar después de 3 segundos
-                QTimer.singleShot(3000, self.label.hide)
+                QTimer.singleShot(2000, self.label.hide)
 
     def _ensure_curve(self, curve_idx):
         """Asegura que exista la curva para el índice dado."""
@@ -104,3 +108,30 @@ class Grafica2DRealTime(QWidget):
         self.f_data_list[curve_idx].append(f)
         self.z_data_list[curve_idx].append(z)
         self.curves[curve_idx].setData(self.f_data_list[curve_idx], self.z_data_list[curve_idx])
+    
+    def toggle_fullscreen(self):
+        """Mueve el widget a un diálogo a pantalla completa y permite regresar con Esc."""
+        if hasattr(self, 'dialogo_fs') and self.dialogo_fs.isVisible():
+            return
+
+        self.layout_original = self.parentWidget().layout() if self.parentWidget() else None
+        if not self.layout_original:
+            return
+
+        self.dialogo_fs = QDialog(self.window())
+        self.dialogo_fs.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        layout_fs = QVBoxLayout(self.dialogo_fs)
+        layout_fs.setContentsMargins(0, 0, 0, 0)
+        
+        layout_fs.addWidget(self)
+        
+        def al_cerrar(event):
+            self.layout_original.addWidget(self)
+            event.accept()
+            
+        self.dialogo_fs.closeEvent = al_cerrar
+        
+        atajo = QShortcut(QKeySequence("Esc"), self.dialogo_fs)
+        atajo.activated.connect(self.dialogo_fs.close)
+        
+        self.dialogo_fs.showFullScreen()
