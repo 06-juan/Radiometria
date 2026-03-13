@@ -29,9 +29,9 @@ class MesaXY:
     def _send_command(self, cmd):
         self.ser.write((cmd + "\n").encode('utf-8'))
 
-    def ajustar_frecuencia(self, freq):
+    def ajustar_frecuencia(self, freq, es_primero=False):
         """Ajusta frecuencia y maneja automáticamente la TC y la espera."""
-        self.lockin.set_frequency(freq)
+        self.lockin.set_frequency(freq, es_primero)
 
     def sweep_and_measure_generator(self, x_max, y_max, res):
         """
@@ -111,9 +111,9 @@ class MesaXY:
                 elif line == "LASER":
                     if self._abort: break
 
-                    self.ajustar_frecuencia(freqs[0])
+                    self.ajustar_frecuencia(freqs[0],True)
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(self.lockin.tiempo_espera) 
+                    time.sleep(10) 
                     
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:

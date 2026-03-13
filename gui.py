@@ -87,15 +87,6 @@ class CruzWorkerThread(QThread):
 
     def run(self):
         try:
-            # 1. Configurar primer punto
-            self.mesa.ajustar_frecuencia(self.f_start)
-            
-            # 2. ESPERA DE GRACIA (Punto de sacrificio)
-            # Esperamos un poco más solo para que la muestra y el Lock-in se conozcan
-            time.sleep(2.0) 
-            _ = self.mesa.lockin.get_measurements() # Lectura basura
-            
-            # 3. Ahora sí, empezamos el barrido real
             for pt_idx, f, z_data in self.mesa.cruz_frequency_generator(self.x_max, self.y_max, self.f_start, self.f_end, self.steps):
                 self.data_signal.emit(pt_idx, f, z_data)
             self.finished_signal.emit()
@@ -442,7 +433,7 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 5.0 
+        f_ini = 100.0 
         f_fin = 1000.0 
         pasos = 100
         
