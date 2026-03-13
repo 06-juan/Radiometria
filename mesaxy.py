@@ -85,32 +85,6 @@ class MesaXY:
 
         # 5. CIERRE: Solo apagamos al terminar todo el barrido
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-
-    def sweep_frequency_generator(self, f_start, f_end, steps, log_space=False):
-        """Barrido de frecuencia. Ajusta la TC en cada paso automáticamente."""
-        self._abort = False
-        self.disable()
-        self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-        
-        if log_space:
-            freqs = np.logspace(np.log10(f_start), np.log10(f_end), steps)
-        else:
-            freqs = np.linspace(f_start, f_end, steps)
-        
-        for f in freqs:
-            if self._abort: break
-            
-            # 2. Ajuste automático: cambia frecuencia, cambia TC y ESPERA 5*TC
-            self.ajustar_frecuencia(f)
-            
-            self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-            time.sleep(self.lockin.tiempo_espera) 
-            z_data = self.lockin.get_measurements()
-            yield f, z_data
-            self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
-            time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
-            
-        print("Barrido de frecuencia terminado.")
     
     def cruz_frequency_generator(self, x_max, y_max, f_start, f_end, steps, log_space=False):
         """Barrido en frecuencia en los 5 puntos de alineación (CRUZ)."""
@@ -136,8 +110,11 @@ class MesaXY:
                     pass # Podríamos extraer la posición si se requiere
                 elif line == "LASER":
                     if self._abort: break
-                    
+
+                    self.ajustar_frecuencia(freqs[0])
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                    time.sleep(self.lockin.tiempo_espera) 
+                    
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:
                         if self._abort: break

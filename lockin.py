@@ -28,8 +28,10 @@ class SR830:
         if freq <= 0: return
         self.inst.write(f'FREQ {freq}')
         
-        if self.tc_constante and freq >= 100:
-            self._set_tc_fija(8) # Índice 9 = 300 ms
+        if self.tc_constante and freq <= 100:
+            self._ajustar_tc_automatico(freq) # Índice 9 = 300 ms
+        elif self.tc_constante and freq >= 100:
+            self._set_tc_fija(7)
         else:
             self._ajustar_tc_automatico(freq)
 
@@ -74,7 +76,6 @@ class SR830:
         """Usamos el aux out 3 y una puerta and para encender y apagar el laser
         ya que TTL out no se puede detener"""
         self.inst.write(f'AUXV 3, {voltage}')
-        print(f'voltaje a {voltage}')
         
     def close(self):
         self.inst.close()

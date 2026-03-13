@@ -165,22 +165,16 @@ class MainWindow(QMainWindow):
         ctrl_layout.addSpacing(20) # Un pequeño respiro visual
 
         # Botones de Control
-        self.btn_home = QPushButton("1. IR A HOME")
+        self.btn_home = QPushButton("IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_home.clicked.connect(self.go_home)
         ctrl_layout.addWidget(self.btn_home)
 
-        self.btn_measure = QPushButton("2. INICIAR MEDICIÓN")
+        self.btn_measure = QPushButton("INICIAR MEDICIÓN")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_measure.clicked.connect(self.start_measurement)
         self.btn_measure.setEnabled(False)
         ctrl_layout.addWidget(self.btn_measure)
-
-        self.btn_frecuency = QPushButton("VARICACION FRECUENCIA")
-        self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
-        self.btn_frecuency.clicked.connect(self.start_measurement_frecuency)
-        self.btn_frecuency.setEnabled(False)
-        ctrl_layout.addWidget(self.btn_frecuency)
 
         self.btn_cruz = QPushButton("BARRIDO CRUZ (5 Puntos)")
         self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
@@ -354,7 +348,7 @@ class MainWindow(QMainWindow):
 
     def _on_connect_and_home_error(self, error):
         self.btn_home.setEnabled(True)
-        self.btn_home.setText("1. IR A HOME")
+        self.btn_home.setText("IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
 
@@ -363,14 +357,13 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(True)
         self.btn_home.setText("HOMED")
         self.btn_measure.setEnabled(True)
-        self.btn_frecuency.setEnabled(True)
         self.btn_cruz.setEnabled(True)
         print("Mesa en posición de origen.")
 
     def on_home_error(self, error):
         """Si algo falla durante el movimiento"""
         self.btn_home.setEnabled(True)
-        self.btn_home.setText("1. IR A HOME")
+        self.btn_home.setText("IR A HOME")
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
     def start_measurement(self):
@@ -422,7 +415,6 @@ class MainWindow(QMainWindow):
 
     def start_measurement_frecuency(self):
         """Inicia Barrido de Profundidad (Frecuencia)"""
-        self.btn_frecuency.setStyleSheet("background: #2196F3; color: white; padding: 12px; font-weight: bold;")
         if not self.mesa: return
         self.stack_graficas.setCurrentIndex(1) # Mostrar 2D
         
@@ -475,9 +467,9 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 10.0 
+        f_ini = 5.0 
         f_fin = 1000.0 
-        pasos = 50
+        pasos = 100
         
         self.toggle_inputs(False)
         
@@ -507,10 +499,9 @@ class MainWindow(QMainWindow):
             self.mesa.close()
             self.mesa = None
         self.btn_stop.setStyleSheet("background: #474B4E; color: white; padding: 12px; font-weight: bold;")
-        self.btn_home.setText("1. IR A HOME")
+        self.btn_home.setText("IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
-        self.btn_frecuency.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
 
         # Reajustar estado de controles: solo permitir volver a HOME
@@ -520,7 +511,6 @@ class MainWindow(QMainWindow):
         self.slider_freq.setEnabled(True)
         self.btn_home.setEnabled(True)
         self.btn_measure.setEnabled(False)
-        self.btn_frecuency.setEnabled(False)
         self.btn_cruz.setEnabled(False)
 
         self.toggle_inputs(True)
@@ -542,7 +532,6 @@ class MainWindow(QMainWindow):
         self.slider_freq.setEnabled(enable)
         self.btn_home.setEnabled(enable)
         self.btn_measure.setEnabled(enable)
-        self.btn_frecuency.setEnabled(enable)
         self.btn_cruz.setEnabled(enable)
 
     def _refrescar_combo_mediciones(self):
