@@ -23,7 +23,7 @@ class SR830:
         self.current_tc_val = 0.3
         self.tiempo_espera = 1.5
 
-    def set_frequency(self, freq):
+    def set_frequency(self, freq, es_primero=False):
         """Establece la frecuencia y decide qué TC aplicar."""
         if freq <= 0: return
         self.inst.write(f'FREQ {freq}')
@@ -34,7 +34,15 @@ class SR830:
             self._set_tc_fija(7)
         else:
             self._ajustar_tc_automatico(freq)
-        time.sleep(self.tiempo_espera)
+
+        factor = 10 if es_primero else 5 
+        wait_time = factor * self.current_tc_val
+        time.sleep(wait_time)
+        
+        if es_primero:
+            # "Limpiamos" el buffer haciendo una lectura que nadie va a usar
+            self.get_measurements() 
+            time.sleep(0.5)
 
     def _set_tc_fija(self, indice):
         """Aplica una TC fija (por defecto 300ms)."""
