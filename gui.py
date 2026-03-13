@@ -355,9 +355,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setStyleSheet("background: #4CAF50; color: white; padding: 8px; font-weight: bold;")
         
         self.btn_measure.setEnabled(True)
-        self.btn_frecuency.setEnabled(True)
         self.btn_cruz.setEnabled(True)
-        print("Mesa en posición de origen.")
 
         # Si había una tarea esperando, la ejecutamos y limpiamos la variable
         if self.pending_task:

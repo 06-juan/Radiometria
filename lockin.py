@@ -29,11 +29,12 @@ class SR830:
         self.inst.write(f'FREQ {freq}')
         
         if self.tc_constante and freq <= 100:
-            self._ajustar_tc_automatico(freq) # Índice 9 = 300 ms
+            self._set_tc_fija(9) # Índice 9 = 300 ms
         elif self.tc_constante and freq >= 100:
             self._set_tc_fija(7)
         else:
             self._ajustar_tc_automatico(freq)
+        time.sleep(self.tiempo_espera)
 
     def _set_tc_fija(self, indice):
         """Aplica una TC fija (por defecto 300ms)."""
