@@ -29,7 +29,7 @@ class SR830:
         self.inst.write(f'FREQ {freq}')
         
         if self.tc_constante and freq <= 100:
-            self._set_tc_fija(9) # Índice 9 = 300 ms
+            self._set_tc_fija(8) # Índice 9 = 300 ms
         elif self.tc_constante and freq >= 100:
             self._set_tc_fija(7)
         else:
