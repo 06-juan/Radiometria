@@ -259,9 +259,6 @@ class Grafica3DRealTime(QWidget):
 
         t = event.type()
         
-        if t == QEvent.Type.MouseButtonDblClick and event.button() == Qt.MouseButton.LeftButton:
-            self.toggle_fullscreen()
-            return True
         if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
             self._z_scale_dragging = True
             self._z_scale_last_y = event.position().y() if hasattr(event, 'position') else event.pos().y()
@@ -350,50 +347,6 @@ class Grafica3DRealTime(QWidget):
         # Calculamos la escala visual final
         self._recalcular_superficie()
 
-    def toggle_fullscreen(self):
-        """Mueve el widget a un diálogo a pantalla completa con corrección de cámara."""
-        if hasattr(self, 'dialogo_fs') and self.dialogo_fs.isVisible():
-            return
-
-        # 1. Encontrar el layout padre y GUARDAR EL ÍNDICE
-        padre = self.parentWidget()
-        layout_orig = padre.layout() if padre else None
-        if not layout_orig:
-            return
-        
-        # Guardamos la posición exacta (0, 1, 2...) para no desordenar la UI al volver
-        self.indice_original = layout_orig.indexOf(self)
-
-        self.dialogo_fs = QDialog(self.window())
-        self.dialogo_fs.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-        layout_fs = QVBoxLayout(self.dialogo_fs)
-        layout_fs.setContentsMargins(0, 0, 0, 0)
-        
-        layout_fs.addWidget(self)
-        
-        def al_cerrar(event):
-            # 2. Restaurar en el lugar exacto donde estaba
-            layout_orig.insertWidget(self.indice_original, self)
-            event.accept()
-            # Forzar actualización al volver al tamaño pequeño
-            QTimer.singleShot(10, lambda: self.ajustar_camara(self.x_max, self.y_max))
-            
-        self.dialogo_fs.closeEvent = al_cerrar
-        
-        atajo = QShortcut(QKeySequence("Esc"), self.dialogo_fs)
-        atajo.activated.connect(self.dialogo_fs.close)
-        
-        self.dialogo_fs.showFullScreen()
-
-        # --- EL TRUCO PARA EL 3D ---
-        # Le damos un instante a la tarjeta gráfica para reconocer el nuevo tamaño
-        # y luego reajustamos la perspectiva.
-        QTimer.singleShot(50, self._refrescar_vista_completa)
-
-    def _refrescar_vista_completa(self):
-        """Re-sincroniza la cámara OpenGL con el nuevo tamaño de pantalla."""
-        self.ajustar_camara(self.x_max, self.y_max)
-        self.view.update()
 
 # ---------------------------------------------------------
 # PRUEBA AUTOMÁTICA

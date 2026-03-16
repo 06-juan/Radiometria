@@ -219,7 +219,7 @@ class MainWindow(QMainWindow):
         self.widget_3d = QWidget()
         layout_3d = QHBoxLayout(self.widget_3d)
         self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")
-        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")
+        self.plotter_mag = Grafica3DRealTime(titulo_z="R (V)")
         layout_3d.addWidget(self.plotter_fase)
         layout_3d.addWidget(self.plotter_mag)
         self.stack_graficas.addWidget(self.widget_3d)
@@ -229,9 +229,9 @@ class MainWindow(QMainWindow):
         layout_2d = QHBoxLayout(self.widget_2d)
 
         # Aquí aplicamos la configuración diferenciada:
-        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (µV) vs Freq", log_x=False, log_y=False)
-        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=True, log_y=False)
-        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (µV) vs Freq", log_x=True, log_y=False)
+        self.plot_mag_2d = Grafica2DRealTime("Amplitud R (V) vs Freq", log_x=False, log_y=False)
+        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq", log_x=False, log_y=False)
+        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (V) vs Freq", log_x=False, log_y=False)
 
         layout_2d.addWidget(self.plot_mag_2d)
         layout_2d.addWidget(self.plot_fase_2d)
@@ -433,8 +433,8 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 100.0 
-        f_fin = 1000.0 
+        f_ini = 10.0 
+        f_fin = 5000.0 
         pasos = 100
         
         self.toggle_inputs(False)
