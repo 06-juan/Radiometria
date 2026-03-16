@@ -90,6 +90,14 @@ class SR830:
         self.inst.close()
         self.rm.close()
 
+    def auto_gain(self):
+        """Ejecuta AGAN y espera a que el hardware termine el ajuste."""
+        print("[SR830] Ejecutando Auto Gain...")
+        self.inst.write("AGAN")
+        # El ajuste automático de ganancia puede tardar un par de segundos
+        # en ciclar internamente por los rangos de sensibilidad.
+        time.sleep(2.0)
+
 if __name__ == "__main__":
     # Ejemplo de uso:
     try:

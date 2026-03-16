@@ -113,7 +113,9 @@ class MesaXY:
 
                     self.ajustar_frecuencia(freqs[0],True)
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(10) 
+                    # --- AQUÍ EJECUTAMOS EL AUTO GAIN ---
+                    self.lockin.auto_gain()
+                    time.sleep(5) 
                     
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:
