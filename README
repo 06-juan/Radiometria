@@ -14,7 +14,8 @@ El software en Python coordina el movimiento, adquiere datos y genera visualizac
 2. Estructura de archivos
 -------------------------
 
-graficar.py        -> Funciones de graficación 3D (X, Y, R, φ)  
+graficar_3d.py     -> Funciones de graficación 3D (R, φ)  
+graficar_2d.py     -> Funciones de graficación 2D (X, R, φ)  
 lockin.py          -> Comunicación con lock-in SR830 vía PyVISA  
 mesaxy.py          -> Clase MesaXY: control, barrido y adquisición  
 MesaXYSerial.ino   -> Firmware Arduino para control de motores  
@@ -25,16 +26,10 @@ README.txt         -> Documentación técnica
 ---------------------------
 
 Python:
-- Python >= 3.8
+- Python = 3.12.10
 - Instalar dependencias con:
 
     pip install -r requirements.txt
-
-Dependencias incluidas:
-- numpy
-- matplotlib
-- pyvisa
-- pyserial
 
 Arduino:
 - IDE de Arduino 1.8.x o Arduino IDE 2.x
@@ -50,6 +45,11 @@ Controladores GPIB (National Instruments):
   * NI-488.2 (controlador GPIB)
 - Ambos pueden descargarse e instalarse desde NI Package Manager.
 - Instalar y reiniciar el sistema antes de ejecutar los scripts de Python.
+
+Controladores Laser Flex:
+- Crear una maquina virtual a 32bits probado en windows xp
+- Instalar drivers memoria que viene con el Laser
+- Conectarlo por USB y configurarlo
 
 4. Configuración del hardware
 -----------------------------
@@ -73,10 +73,7 @@ Parámetros clave:
    - Al iniciar, el Arduino enviará READY por puerto serie.
 
 2. Inicialización en Python
-   - Ejecutar mesaxy.py.
-   - Verificar la conexión con Arduino (PING -> PONG).
-   - Habilitar motores (EN_ON).
-   - Realizar homing (HOME).
+   - Ejecutar main.py.
 
 3. Adquisición de datos
    - Definir barrido con sweep_and_measure(x_max, y_max, res).
@@ -86,20 +83,7 @@ Parámetros clave:
    - Se almacenan X, Y, R, φ.
 
 4. Visualización de resultados
-   - Ejecutar plot_3d() desde mesaxy.py.
-   - Se generan cuatro superficies 3D (X, Y, R, φ).
+   - Se generan tres superficies 2D (X, R, φ)
+   - Se generan dos superficies 3D (R, φ).
 
-6. Comandos implementados (Arduino ↔ Python)
---------------------------------------------
-
-- READY: enviado al inicio, confirma inicialización.  
-- PING -> PONG: verificación de comunicación.  
-- EN_ON / EN_OFF: habilitar/deshabilitar motores.  
-- HOME: mover a posición de referencia.  
-- SWEEP x_max y_max res: iniciar barrido.  
-- POS x y: Arduino reporta posición actual.  
-- CONT: autorización desde Python para continuar al siguiente punto.  
-- OK: finalización de barrido.  
-- ERR ...: error en ejecución.  
-- DBG ...: mensajes de depuración.  
 
