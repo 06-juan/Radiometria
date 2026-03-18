@@ -277,8 +277,8 @@ class DataManager:
         Aplica el borrado en cascada lógico.
         """
         self.conn.execute("""
-            DELETE FROM mediciones WHERE exp_id IN (
-                SELECT exp_id FROM mediciones GROUP BY exp_id HAVING COUNT(*) < 50
+            DELETE FROM mediciones WHERE experiment_id IN (
+                SELECT experiment_id FROM mediciones GROUP BY experiment_id HAVING COUNT(*) < 50
             )
         """)
 

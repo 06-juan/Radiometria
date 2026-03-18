@@ -381,7 +381,7 @@ class MainWindow(QMainWindow):
         self.mesa.ajustar_frecuencia(self.current_freq)
         
         # 2. Preparar Base de Datos
-        exp_id = self.db.iniciar_nuevo_experimento()
+        exp_id = self.db.iniciar_experimento("XY")
         print(f"Iniciando guardado de datos en ID: {exp_id}")
 
         # 3. Preparar Gráficas
@@ -427,7 +427,7 @@ class MainWindow(QMainWindow):
         self.plot_fase_2d.limpiar()
         self.plot_quad_2d.limpiar()
         
-        exp_id = self.db.iniciar_nuevo_experimento()
+        exp_id = self.db.iniciar_experimento("FREQ")
         print(f"Iniciando guardado de datos en ID: {exp_id}")
 
         x_max = self.slider_x.value() / 10.0
