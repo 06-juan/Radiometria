@@ -113,6 +113,7 @@ class MesaXY:
 
                     self.ajustar_frecuencia(freqs[0],True)
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                    time.sleep(self.lockin.tiempo_espera + 2)
                     # --- AQUÍ EJECUTAMOS EL AUTO GAIN ---
                     self.lockin.auto_gain()
                     time.sleep(5) 
