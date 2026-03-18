@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Importar nuestros módulos
-from graficar import Grafica3DRealTime
+from graficar_3d import Grafica3DRealTime
 from grafica_2d import Grafica2DRealTime
 from mesaxy import MesaXY
 from data_manager import DataManager
@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self.btn_measure)
 
         self.btn_cruz = QPushButton("BARRIDO Frecuencia(5 Puntos)")
-        self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
+        self.btn_cruz.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
         self.btn_cruz.clicked.connect(lambda: self.ensure_home_then_do(self.start_measurement_cruz))
         self.btn_cruz.setEnabled(True)
         ctrl_layout.addWidget(self.btn_cruz)
@@ -219,7 +219,7 @@ class MainWindow(QMainWindow):
         self.widget_3d = QWidget()
         layout_3d = QHBoxLayout(self.widget_3d)
         self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")
-        self.plotter_mag = Grafica3DRealTime(titulo_z="R (V)")
+        self.plotter_mag = Grafica3DRealTime(titulo_z="R (µV)")
         layout_3d.addWidget(self.plotter_fase)
         layout_3d.addWidget(self.plotter_mag)
         self.stack_graficas.addWidget(self.widget_3d)
@@ -433,9 +433,9 @@ class MainWindow(QMainWindow):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
         
-        f_ini = 10.0 
-        f_fin = 5000.0 
-        pasos = 100
+        f_ini = 100.0 
+        f_fin = 10000.0 
+        pasos = 250
         
         self.toggle_inputs(False)
         
@@ -468,7 +468,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setText("IR A HOME")
         self.btn_home.setStyleSheet("background: #2196F3; color: white; padding: 8px; font-weight: bold;")
         self.btn_measure.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
-        self.btn_cruz.setStyleSheet("background: #E91E63; color: white; padding: 12px; font-weight: bold;")
+        self.btn_cruz.setStyleSheet("background: #4CAF50; color: white; padding: 12px; font-weight: bold;")
 
         # Reajustar estado de controles: solo permitir volver a HOME
         self.slider_x.setEnabled(True)
