@@ -3,81 +3,130 @@ import json
 from datetime import datetime
 import os
 
+import duckdb
+import os
+from datetime import datetime
+
 class DataManager:
-    def __init__(self, folder="data", db_name="laboratorio_datos.db"):
-        # 1. Definimos la ruta completa
+    def __init__(self, folder="data", db_name="ptr_lab.db", min_points=50):
         self.folder = folder
         self.db_path = os.path.join(self.folder, db_name)
+        self.min_points = min_points
         
-        # 2. Creamos la carpeta si no existe (como mkdir -p)
         if not os.path.exists(self.folder):
             os.makedirs(self.folder)
-            print(f"Carpeta '{self.folder}' creada exitosamente.")
             
-        self.conn = None
-        self.current_experiment_id = None
-        self._inicializar_tabla()
-
-    def _inicializar_tabla(self):
-        """Conecta a la ruta específica dentro de /data"""
-        # Conectamos a 'data/laboratorio_datos.db'
         self.conn = duckdb.connect(self.db_path)
-        
-        query = """
-        CREATE TABLE IF NOT EXISTS mediciones (
-            experiment_id VARCHAR,
-            timestamp TIMESTAMP,
-            x_pos DOUBLE,
-            y_pos DOUBLE,
-            ch_x DOUBLE,
-            ch_y DOUBLE,
-            magnitude_r DOUBLE,
-            phase_phi DOUBLE,
-            laser_freq DOUBLE
-        );
-        """
-        self.conn.execute(query)
-        print(f"Base de datos lista en: {self.db_path}")
+        self.current_exp_id = None
+        self.current_exp_type = None # 'FREQ' o 'XY'
+        self.buffer = []
+        self._inicializar_esquema()
 
-    def iniciar_nuevo_experimento(self):
-        """Genera un ID único basado en la fecha y hora actual."""
-        # Ejemplo de ID: "EXP_20231027_153022"
-        now = datetime.now()
-        self.current_experiment_id = f"EXP_{now.strftime('%Y%m%d_%H%M%S')}"
-        return self.current_experiment_id
+    def _inicializar_esquema(self):
+        """Crea el esquema relacional: 1 tabla de metadatos, 2 de mediciones."""
+        # 1. Tabla Maestra (Metadatos)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS experimentos (
+                exp_id VARCHAR PRIMARY KEY,
+                tipo VARCHAR, -- 'FREQ' o 'XY'
+                fecha TIMESTAMP,
+                descripcion VARCHAR
+            );
+        """)
+        
+        # 2. Tabla para Barridos de Frecuencia
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS mediciones_freq (
+                exp_id VARCHAR,
+                freq DOUBLE,
+                mag_r DOUBLE,
+                phase_phi DOUBLE,
+                ch_y DOUBLE,
+                FOREIGN KEY (exp_id) REFERENCES experimentos(exp_id)
+            );
+        """)
 
-    def guardar_punto(self, x, y, lockin_data, freq):
-        """
-        Inserta una fila de datos.
-        lockin_data: diccionario con keys 'X', 'Y', 'R', 'phi'
-        """
-        if not self.current_experiment_id:
-            print("ADVERTENCIA: Intentando guardar sin iniciar experimento.")
-            return
+        # 3. Tabla para Barridos XY (Frecuencia Fija)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS mediciones_xy (
+                exp_id VARCHAR,
+                x_pos DOUBLE,
+                y_pos DOUBLE,
+                mag_r DOUBLE,
+                phase_phi DOUBLE,
+                laser_freq_fija DOUBLE,
+                FOREIGN KEY (exp_id) REFERENCES experimentos(exp_id)
+            );
+        """)
 
-        timestamp = datetime.now()
-        
-        # Preparamos la query parametrizada (Evita errores y es más seguro)
-        query = """
-        INSERT INTO mediciones VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    def iniciar_experimento(self, tipo, desc=""):
         """
+        tipo: 'FREQ' o 'XY'
+        """
+        if tipo not in ['FREQ', 'XY']:
+            raise ValueError("El tipo debe ser 'FREQ' o 'XY'")
+            
+        self.current_exp_id = f"EXP_{tipo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.current_exp_type = tipo
+        self.buffer = []
         
-        params = (
-            self.current_experiment_id,
-            timestamp,
-            float(x),
-            float(y),
-            float(lockin_data.get('X', 0.0)),
-            float(lockin_data.get('Y', 0.0)),
-            float(lockin_data.get('R', 0.0)),
-            float(lockin_data.get('phi', 0.0)),
-            float(freq)
-        )
+        # Registramos en la tabla maestra
+        self.conn.execute("INSERT INTO experimentos VALUES (?, ?, ?, ?)", 
+                         (self.current_exp_id, tipo, datetime.now(), desc))
+        return self.current_exp_id
+
+    def guardar_punto(self, **datos):
+        """
+        Usa kwargs para ser flexible según el tipo de experimento.
+        Ej para FREQ: guardar_punto(freq=10.5, mag=0.02, phi=45.0, y=0.01)
+        Ej para XY: guardar_punto(x=1.2, y=2.2, mag=0.02, phi=45.0, f_fija=100.0)
+        """
+        if not self.current_exp_id: return
+
+        # Construcción de la tupla según el tipo
+        if self.current_exp_type == 'FREQ':
+            punto = (self.current_exp_id, datos['freq'], datos['mag'], datos['phi'], datos.get('y', 0.0))
+        else: # XY
+            punto = (self.current_exp_id, datos['x'], datos['y'], datos['mag'], datos['phi'], datos['f_fija'])
+
+        self.buffer.append(punto)
+
+        # Volcado por lotes (Batching) para eficiencia
+        if len(self.buffer) >= self.min_points:
+            self._volcar_datos()
+
+    def _volcar_datos(self):
+        if not self.buffer: return
         
-        try:
-            self.conn.execute(query, params)
-        except Exception as e:
-            print(f"Error guardando en DB: {e}")
+        tabla = "mediciones_freq" if self.current_exp_type == 'FREQ' else "mediciones_xy"
+        num_cols = 5 if self.current_exp_type == 'FREQ' else 6
+        placeholders = ", ".join(["?"] * num_cols)
+        
+        self.conn.executemany(f"INSERT INTO {tabla} VALUES ({placeholders})", self.buffer)
+        self.buffer = []
+
+    def limpiar_ruido_historico(self):
+        """
+        Elimina experimentos (y sus mediciones) que no llegaron al mínimo de puntos.
+        Aplica el borrado en cascada lógico.
+        """
+        for tabla in ['mediciones_freq', 'mediciones_xy']:
+            # Borramos las mediciones huérfanas
+            self.conn.execute(f"""
+                DELETE FROM {tabla} WHERE exp_id IN (
+                    SELECT exp_id FROM {tabla} GROUP BY exp_id HAVING COUNT(*) < {self.min_points}
+                )
+            """)
+        
+        # Limpiamos la tabla maestra: borramos IDs que ya no tienen mediciones asociadas
+        self.conn.execute("""
+            DELETE FROM experimentos WHERE exp_id NOT IN (
+                SELECT DISTINCT exp_id FROM mediciones_freq
+                UNION
+                SELECT DISTINCT exp_id FROM mediciones_xy
+            )
+        """)
+        print(f"Limpieza profunda ejecutada (Umbral: {self.min_points} puntos).")
 
     def listar_mediciones(self):
         """
@@ -275,3 +324,26 @@ class DataManager:
         if self.conn:
             self.conn.close()
             print("Conexión a DB cerrada.")
+
+if __name__ == "__main__":
+    manager = DataManager(min_points=50)
+    
+    # --- FASE DE LIMPIEZA ---
+    print("Mantenimiento: Eliminando experimentos con señal insuficiente...")
+    manager.limpiar_ruido_historico()
+    
+    # --- EJEMPLO DE USO PARA INVESTIGACIÓN ---
+    # 1. Simular un barrido de frecuencia (PTR Difusividad)
+    manager.iniciar_experimento('FREQ', "Muestra Silicio - Caracterización Térmica")
+    for f in range(1, 60): # 60 puntos (pasará el filtro)
+        manager.guardar_punto(freq=f, mag=0.5/f, phi=-45.0, y=0.0)
+    
+    # 2. Simular un barrido XY fallido (Ruido)
+    manager.iniciar_experimento('XY', "Mapa de superficie - Intento fallido")
+    for i in range(10): # Solo 10 puntos (será ruido)
+        manager.guardar_punto(x=i, y=0, mag=0.1, phi=10.0, f_fija=1000.0)
+
+    # Al cerrar, el experimento de 10 puntos no se habrá guardado 
+    # permanentemente porque nunca llegó al volcado de 50.
+    manager.cerrar()
+    print("Proceso finalizado.")
