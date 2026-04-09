@@ -8,10 +8,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QColor
 
-from graficar_3d import Grafica3DRealTime
-from grafica_2d import Grafica2DRealTime
-from mesaxy import MesaXY
-from data_manager import DataManager
+from src.utils.graficar_3d import Grafica3DRealTime
+from src.utils.grafica_2d import Grafica2DRealTime
+from src.ingest.mesaxy import MesaXY
+from src.ingest.data_manager import DataManager
 
 
 # ─────────────────────────────────────────────
