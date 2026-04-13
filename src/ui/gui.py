@@ -930,7 +930,7 @@ class MainWindow(QMainWindow):
         self.current_freq = self.slider_freq.value()
         self.mesa.ajustar_frecuencia(self.current_freq)
 
-        exp_id = self.db.iniciar_experimento("XY")
+        exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Experimento ID: {exp_id}")
 
         self.res_actual = self.slider_res.value() / 1000.0
@@ -966,7 +966,7 @@ class MainWindow(QMainWindow):
         self.plot_fase_2d.limpiar()
         self.plot_quad_2d.limpiar()
 
-        exp_id = self.db.iniciar_experimento("FREQ")
+        exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Experimento ID: {exp_id}")
 
         x_max = self.slider_x.value() / 10.0
