@@ -555,8 +555,8 @@ class MainWindow(QMainWindow):
         sec = make_label("PARÁMETROS DE BARRIDO", "section_label")
         params_layout.addWidget(sec)
 
-        self.slider_x,   self.input_x    = self._param_control(params_layout, "Eje X máx (mm)",    10, 150,  50, 10,   0)
-        self.slider_y,   self.input_y    = self._param_control(params_layout, "Eje Y máx (mm)",    10, 150,  50, 10,   0)
+        self.slider_x,   self.input_x    = self._param_control(params_layout, "Eje X máx (mm)",    10, 100,  50, 10,   0)
+        self.slider_y,   self.input_y    = self._param_control(params_layout, "Eje Y máx (mm)",    10, 100,  50, 10,   0)
         self.slider_res, self.input_res  = self._param_control(params_layout, "Resolución (mm)",    5, 1000, 1000, 1000, 3)
         self.slider_freq, self.input_freq = self._param_control(params_layout, "Frecuencia (Hz)",   1, 5000, 1000, 1,    0)
         layout.addWidget(params_frame)
