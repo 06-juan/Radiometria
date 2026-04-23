@@ -1135,12 +1135,3 @@ class MainWindow(QMainWindow):
         self.plotter_fase.cargar_datos_completos(
             data["x_max"], data["y_max"], data["res"], data["z_fase"])
         QMessageBox.information(self, "Mapa cargado", f"'{exp_id}' cargado correctamente.")
-
-
-# ─────────────────────────────────────────────
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    app.setFont(QFont("Segoe UI", 10))
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
