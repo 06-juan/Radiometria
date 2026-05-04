@@ -1105,8 +1105,6 @@ class MainWindow(QMainWindow):
         else:
             self._cargar_vista_3d(exp_id)
 
-        self.db.exportar_experimento_csv(exp_id, "data/datos_experimento")
-
     def _cargar_vista_2d(self, exp_id):
         curves_data = self.db_viewer.cargar_medicion_2d(exp_id)
         if not curves_data:
