@@ -23,7 +23,7 @@ import matplotlib.colors as mcolors
 # ─────────────────────────────────────────────────────────────────────────────
 CMAP_NOMBRE  = 'viridis'   # opciones: 'plasma', 'inferno', 'RdBu_r', 'coolwarm'
 COLOR_FONDO  = (0.15, 0.15, 0.15)   # gris oscuro neutro (no negro puro)
-COLOR_GRILLA = (0.35, 0.35, 0.35, 0.6)  # gris para la grilla de piso
+COLOR_GRILLA = (0, 0, 0, 0.1)  # gris para la grilla de piso
 
 
 class Grafica3DRealTime(QWidget):
