@@ -1,181 +1,110 @@
-"""
-Grafica3D — motor PyVista + pyvistaqt
-======================================
-· Colorbar nativa con unidades reales
-· Cámara auto-ajustable (reset_camera())
-· Ejes con labels correctos (set_axes_labels)
-· Rotación / zoom / pan con mouse sin configuración extra
-· Grilla incluida
-· Colormap científico (viridis por defecto)
-·
-Uso idéntico al código anterior:
-    g = Grafica3DCientifica(titulo_z="Amplitud (µV)")
-    g.inicializar_malla(100.0, 100.0, 2.0)
-    g.actualizar_punto(x, y, z)
-    g.cargar_datos_completos(x_max, y_max, res, z_grid_2d)
-"""
-
+import os
 import sys
+
+# --- ESTO ES LO MÁS IMPORTANTE PARA WAYLAND ---
+# Forzamos a Qt a usar X11 en lugar de Wayland nativo
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+# Evita errores de memoria con drivers de video en modo compatibilidad
+os.environ["VTK_SILENT_ERRORS"] = "ON"
+# En algunos casos, Wayland necesita saber cuál es el display
+if "DISPLAY" not in os.environ:
+    os.environ["DISPLAY"] = ":0"
+# ----------------------------------------------
+
 import numpy as np
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
 import pyvista as pv
 from pyvistaqt import QtInteractor
-
-CMAP        = "viridis"   # plasma | RdBu_r | inferno | coolwarm
-FONDO       = "#1e1e1e"   # gris oscuro neutro
-
 
 class Grafica3DRealTime(QWidget):
     def __init__(self, titulo_z: str = "Amplitud (µV)"):
         super().__init__()
-        self.titulo_z = titulo_z
+        self.setWindowTitle("Radiometría 3D (X11 Compatibility Mode)")
+        self.resize(1000, 700)
+        
+        # Estado de la malla
+        self.x_max, self.y_max, self.res = 100.0, 100.0, 2.0
+        self.nx = int(self.x_max / self.res) + 1
+        self.ny = int(self.y_max / self.res) + 1
+        
+        self._setup_ui()
+        
+        # Inicialización diferida (clave para evitar el crash al arrancar)
+        QTimer.singleShot(500, self.inicializar_visualizacion)
 
-        # estado interno
-        self.x_max = 10.0
-        self.y_max = 10.0
-        self.res   = 1.0
-        self.nx = self.ny = 0
-        self.xs = self.ys = None
-        self.z_raw = None
-        self._mesh  = None
-        self._actor = None
-
-        self._construir_ui()
-        self.mostrar_vista_previa()
-
-    # ─────────────────────────── UI ──────────────────────────────────────────
-
-    def _construir_ui(self):
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-
+        
+        # Creamos el plotter
         self.plotter = QtInteractor(self)
-        self.plotter.set_background(FONDO)
+        self.plotter.set_background("#1e1e1e")
         layout.addWidget(self.plotter)
 
-        # ejes con labels
-        self.plotter.show_axes()
-
-    # ─────────────────────────── MALLA ───────────────────────────────────────
-
-    def mostrar_vista_previa(self):
-        self.inicializar_malla(100.0, 100.0, 2.0)
-
-    def inicializar_malla(self, x_max: float, y_max: float, res: float):
-        self.x_max = x_max
-        self.y_max = y_max
-        self.res   = res
-        self.nx    = int(x_max / res) + 1
-        self.ny    = int(y_max / res) + 1
-        self.xs    = np.linspace(0, x_max, self.nx)
-        self.ys    = np.linspace(0, y_max, self.ny)
+    def inicializar_visualizacion(self):
+        # Crear datos iniciales
+        self.xs = np.linspace(0, self.x_max, self.nx)
+        self.ys = np.linspace(0, self.y_max, self.ny)
         self.z_raw = np.zeros((self.nx, self.ny))
-
-        self._reconstruir_mesh()
-
-    def _reconstruir_mesh(self):
-        """Crea (o recrea) el mesh PyVista a partir de xs, ys, z_raw."""
+        
         xx, yy = np.meshgrid(self.xs, self.ys, indexing='ij')
         self._mesh = pv.StructuredGrid(xx, yy, self.z_raw)
         self._mesh["z_valor"] = self.z_raw.ravel(order='F')
 
-        self.plotter.clear()
-
-        scalar_bar_args = dict(
-            title=self.titulo_z,
-            title_font_size=12,
-            label_font_size=10,
-            shadow=False,
-            italic=False,
-            fmt="%.3g",
-            vertical=True,
-            position_x=0.88,
-            position_y=0.1,
-            width=0.08,
-            height=0.7,
-            color="white",
+        self.plotter.add_mesh(
+            self._mesh, 
+            scalars="z_valor", 
+            cmap="viridis", 
+            name="malla_principal",
+            show_edges=False
         )
-
-        self._actor = self.plotter.add_mesh(
-            self._mesh,
-            scalars="z_valor",
-            cmap=CMAP,
-            show_edges=False,
-            smooth_shading=True,
-            scalar_bar_args=scalar_bar_args,
-        )
-
-        # Ejes con labels
-        self.plotter.show_grid(
-            xtitle="X (mm)",
-            ytitle="Y (mm)",
-            ztitle=self.titulo_z,
-            font_size=10,
-            color="white",
-        )
-
+        self.plotter.show_grid(color="gray")
         self.plotter.reset_camera()
+        self.plotter.render()
 
-    # ─────────────────────────── ACTUALIZACIÓN ───────────────────────────────
-
-    def actualizar_punto(self, x_val: float, y_val: float, z_val: float):
+    def actualizar_punto(self, x_val, y_val, z_val):
+        if not hasattr(self, '_mesh'): return
+        
         ix = int(np.clip(round(x_val / self.res), 0, self.nx - 1))
         iy = int(np.clip(round(y_val / self.res), 0, self.ny - 1))
         self.z_raw[ix, iy] = z_val
-        self._actualizar_surface()
-
-    def _actualizar_surface(self):
-        if self._mesh is None:
-            return
-
+        
+        # Actualizar geometría
         xx, yy = np.meshgrid(self.xs, self.ys, indexing='ij')
-        # Actualizar coordenadas Z del mesh y scalar
-        puntos = np.column_stack([xx.ravel(order='F'),
-                                   yy.ravel(order='F'),
-                                   self.z_raw.ravel(order='F')])
+        puntos = np.column_stack([
+            xx.ravel(order='F'),
+            yy.ravel(order='F'),
+            self.z_raw.ravel(order='F')
+        ])
         self._mesh.points = puntos
         self._mesh["z_valor"] = self.z_raw.ravel(order='F')
-
         self.plotter.render()
 
-    def cargar_datos_completos(self, x_max: float, y_max: float,
-                                res: float, z_grid: np.ndarray):
-        self.x_max = x_max
-        self.y_max = y_max
-        self.res   = res
-        self.z_raw = np.asarray(z_grid, dtype=float).copy()
-        self.nx, self.ny = self.z_raw.shape
-        self.xs = np.linspace(0, x_max, self.nx)
-        self.ys = np.linspace(0, y_max, self.ny)
-        self._reconstruir_mesh()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  DEMO
-# ─────────────────────────────────────────────────────────────────────────────
+    def closeEvent(self, event):
+        self.plotter.close()
+        event.accept()
 
 if __name__ == "__main__":
+    # Compartir contextos es vital en Linux
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    
     app = QApplication(sys.argv)
+    
+    gui = Grafica3DRealTime()
+    gui.show()
 
-    ventana = Grafica3DRealTime(titulo_z="Amplitud (µV)")
-    ventana.resize(1000, 700)
-    ventana.setWindowTitle("Mapa 3D — tiempo real (PyVista)")
-    ventana.show()
-
-    t_sim = 0.0
-
-    def actualizar():
-        global t_sim
-        t_sim += 0.08
-        for x in np.linspace(0, ventana.x_max, 20):
-            for y in np.linspace(0, ventana.y_max, 20):
-                z = 5e-6 * np.sin(0.08*x + 0.06*y + t_sim) * \
-                    np.exp(-0.003 * ((x - 50)**2 + (y - 50)**2))
-                ventana.actualizar_punto(x, y, z)
+    # Simulación de tiempo real
+    t = [0]
+    def timer_event():
+        t[0] += 0.1
+        rx = np.random.uniform(0, 100)
+        ry = np.random.uniform(0, 100)
+        rz = np.sin(t[0] + rx/20) * 10
+        gui.actualizar_punto(rx, ry, rz)
 
     timer = QTimer()
-    timer.timeout.connect(actualizar)
-    timer.start(60)
+    timer.timeout.connect(timer_event)
+    timer.start(30)
 
     sys.exit(app.exec())
