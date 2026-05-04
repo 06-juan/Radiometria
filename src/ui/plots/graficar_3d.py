@@ -127,7 +127,7 @@ class Grafica3DRealTime(QWidget):
     # ──────────────────────── INICIALIZACIÓN DE MALLA ────────────────────────
 
     def mostrar_vista_previa(self):
-        self.inicializar_malla(100.0, 100.0, 2.0)
+        self.inicializar_malla(10.0, 10.0, 1.0)
 
     def inicializar_malla(self, x_max: float, y_max: float, res: float):
         self.x_max = x_max
@@ -193,7 +193,7 @@ class Grafica3DRealTime(QWidget):
         z_min = float(self.z_raw.min())
         z_max = float(self.z_raw.max())
         rng   = max(z_max - z_min, 1e-12)
-        altura_visual = max(self.x_max, self.y_max) * 0.35
+        altura_visual = max(self.x_max, self.y_max) * 0.5
 
         if self.auto_scale:
             scale = altura_visual / rng
@@ -227,7 +227,7 @@ class Grafica3DRealTime(QWidget):
         self.axes_items    = []
         self.z_ticks_items = []
 
-        z_height = max(self.x_max, self.y_max) * 0.35
+        z_height = max(self.x_max, self.y_max) * 0.5
         pasos    = 5
 
         # eje OpenGL base (líneas X Y Z)
@@ -284,7 +284,7 @@ class Grafica3DRealTime(QWidget):
     def _actualizar_ticks_z(self, z_min: float, z_max: float):
         if not self.z_ticks_items:
             return
-        z_height = max(self.x_max, self.y_max) * 0.35
+        z_height = max(self.x_max, self.y_max) * 0.5
         pasos    = len(self.z_ticks_items) - 1
         for i, tick in enumerate(self.z_ticks_items):
             frac    = i / pasos
@@ -359,7 +359,7 @@ class Grafica3DRealTime(QWidget):
             return True
         if t == QEvent.Type.MouseMove and self._dragging_z:
             if self.auto_scale:
-                altura = max(self.x_max, self.y_max) * 0.35
+                altura = max(self.x_max, self.y_max) * 0.5
                 rng = max(float(self.z_raw.max() - self.z_raw.min()), 1e-12)
                 self.z_scale_factor = altura / rng
             py = event.position().y()
