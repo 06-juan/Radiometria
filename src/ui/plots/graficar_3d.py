@@ -4,373 +4,402 @@ if not hasattr(np, 'product'):
     np.product = np.prod
 
 import pyqtgraph.opengl as gl
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QDialog
-from PyQt6.QtGui import QVector3D, QFont, QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy
+)
+from PyQt6.QtGui import QVector3D, QFont
 from PyQt6.QtCore import QTimer, QEvent, Qt
+
+import matplotlib
+matplotlib.use('QtAgg')
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PALETA CIENTÍFICA — cámbiala aquí si quieres otra
+# ─────────────────────────────────────────────────────────────────────────────
+CMAP_NOMBRE  = 'viridis'   # opciones: 'plasma', 'inferno', 'RdBu_r', 'coolwarm'
+COLOR_FONDO  = (0.15, 0.15, 0.15)   # gris oscuro neutro (no negro puro)
+COLOR_GRILLA = (0.35, 0.35, 0.35, 0.6)  # gris para la grilla de piso
 
 
 class Grafica3DRealTime(QWidget):
-    def __init__(self, titulo_z="R (µV)"): # <--- Añadimos el título por defecto
+    """
+    Superficie 3D en tiempo real:
+      · colormap perceptualmente uniforme (viridis por defecto)
+      · colorbar lateral con unidades reales
+      · grilla de piso
+      · etiquetas de ejes limpias
+      · fondo gris neutro
+    """
+
+    def __init__(self, titulo_z: str = "Amplitud (µV)", titulo: str = ""):
         super().__init__()
-        self.titulo_z_texto = titulo_z # Guardamos el nombre del eje
-        
-        # Definimos una fuente pequeña para los ejes
-        self.font_ejes = QFont('Arial', 8) 
-        # Definimos una fuente un poco más grande para el título del eje
-        self.font_titulo = QFont('Arial', 10, QFont.Weight.Bold)
+        self.titulo_z      = titulo_z
+        self.titulo_figura = titulo
 
-        self.layout = QVBoxLayout()
+        self._cmap_mpl = plt.get_cmap(CMAP_NOMBRE)  # para colores de la superficie
+        self._cmap_norm = mcolors.Normalize(vmin=0, vmax=1)
 
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
+        # estado interno
+        self.surface_item     = None
+        self.grid_item        = None
+        self.axes_items       = []
+        self.z_ticks_items    = []
 
-        # Vista 3D
-        self.view = gl.GLViewWidget()
-        self.view.setBackgroundColor('k')
-        self.layout.addWidget(self.view)
+        self.z_max_historico  = 1e-9
+        self.auto_scale       = True
+        self.z_scale_factor   = 1.0
 
-        # Estado interno
-        self.surface_item = None
-        self.axes_items = []
-        self.cmap = plt.get_cmap('gist_rainbow')
+        self._dragging_z      = False
+        self._drag_last_y     = 0
 
-        self.z_max_historico = 1e-9
-        self.z_scale_factor = 1.0
-        self.auto_scale = True
-        self._z_scale_dragging = False
-        self._z_scale_last_y = 0
+        self.font_tick  = QFont('Arial', 8)
+        self.font_label = QFont('Arial', 9, QFont.Weight.Bold)
 
+        self._construir_ui()
         self.mostrar_vista_previa()
+
+    # ──────────────────────────── UI ─────────────────────────────────────────
+
+    def _construir_ui(self):
+        layout_principal = QHBoxLayout(self)
+        layout_principal.setContentsMargins(4, 4, 4, 4)
+        layout_principal.setSpacing(0)
+
+        # ── Viewport 3D ──
+        self.view = gl.GLViewWidget()
+        r, g, b = COLOR_FONDO
+        self.view.setBackgroundColor((int(r*255), int(g*255), int(b*255)))
+        self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout_principal.addWidget(self.view, stretch=9)
+
+        # ── Colorbar (matplotlib embebida) ──
+        self._fig_cb  = Figure(figsize=(0.7, 4), facecolor='none')
+        self._ax_cb   = self._fig_cb.add_axes([0.05, 0.05, 0.35, 0.9])
+        self._canvas_cb = FigureCanvas(self._fig_cb)
+        self._canvas_cb.setFixedWidth(80)
+        self._canvas_cb.setStyleSheet("background: transparent;")
+        layout_principal.addWidget(self._canvas_cb, stretch=1)
+
+        # colorbar inicial vacía
+        sm = plt.cm.ScalarMappable(cmap=CMAP_NOMBRE,
+                                   norm=mcolors.Normalize(vmin=0, vmax=1))
+        self._cb = self._fig_cb.colorbar(sm, cax=self._ax_cb)
+        self._cb.set_label(self.titulo_z, color='white', fontsize=8, labelpad=4)
+        self._estilizar_colorbar(0.0, 1.0)
+        self._canvas_cb.draw()
+
         self.view.installEventFilter(self)
 
-    # ---------------------------------------------------------
-    # CONFIGURACIÓN GENERAL
-    # ---------------------------------------------------------
+    def _estilizar_colorbar(self, vmin: float, vmax: float):
+        """Actualiza la colorbar con los valores reales de z."""
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        sm   = plt.cm.ScalarMappable(cmap=CMAP_NOMBRE, norm=norm)
+        sm.set_array([])
 
-    def ajustar_camara(self, x_max, y_max):
-        centro_x = x_max / 2
-        centro_y = y_max / 2
-        distancia_optima = max(x_max, y_max) * 1.8
+        self._ax_cb.cla()
+        self._cb = self._fig_cb.colorbar(sm, cax=self._ax_cb)
 
-        self.view.setCameraPosition(
-            pos=QVector3D(centro_x, centro_y, 0),
-            distance=distancia_optima,
-            elevation=30,
-            azimuth=45
-        )
+        # formato de ticks según unidad
+        if "µV" in self.titulo_z:
+            self._cb.formatter = matplotlib.ticker.FuncFormatter(
+                lambda x, _: f"{x*1e6:.2f}")
+            self._cb.set_label("µV", color='white', fontsize=8, labelpad=4)
+        elif "°" in self.titulo_z:
+            self._cb.formatter = matplotlib.ticker.FuncFormatter(
+                lambda x, _: f"{x:.1f}°")
+            self._cb.set_label("grados", color='white', fontsize=8, labelpad=4)
+        else:
+            self._cb.set_label(self.titulo_z, color='white', fontsize=8, labelpad=4)
+
+        # estética oscura para que integre con el fondo
+        self._ax_cb.tick_params(colors='white', labelsize=7)
+        self._ax_cb.yaxis.label.set_color('white')
+        for spine in self._ax_cb.spines.values():
+            spine.set_edgecolor('#555555')
+        self._fig_cb.patch.set_alpha(0)
+        self._canvas_cb.draw_idle()
+
+    # ──────────────────────── INICIALIZACIÓN DE MALLA ────────────────────────
 
     def mostrar_vista_previa(self):
         self.inicializar_malla(100.0, 100.0, 2.0)
 
-    def inicializar_malla(self, x_max, y_max, res):
+    def inicializar_malla(self, x_max: float, y_max: float, res: float):
         self.x_max = x_max
         self.y_max = y_max
-        self.res = res
-
-        self.nx = int(x_max / res) + 1
-        self.ny = int(y_max / res) + 1
-
-        self.xs = np.linspace(0, x_max, self.nx)
-        self.ys = np.linspace(0, y_max, self.ny)
-
-        self.z_raw = np.zeros((self.nx, self.ny)) 
-        self.z_grid = np.zeros((self.nx, self.ny))
-
+        self.res   = res
+        self.nx    = int(x_max / res) + 1
+        self.ny    = int(y_max / res) + 1
+        self.xs    = np.linspace(0, x_max, self.nx)
+        self.ys    = np.linspace(0, y_max, self.ny)
+        self.z_raw = np.zeros((self.nx, self.ny))
+        self.z_vis = np.zeros((self.nx, self.ny))
         self.z_max_historico = 1e-9
+
+        # limpiar items previos
+        for item in self.axes_items:
+            self.view.removeItem(item)
+        self.axes_items     = []
+        self.z_ticks_items  = []
 
         if self.surface_item:
             self.view.removeItem(self.surface_item)
+        if self.grid_item:
+            self.view.removeItem(self.grid_item)
 
-        for item in self.axes_items:
-            self.view.removeItem(item)
-        self.axes_items = []
+        # ── Grilla de piso ──
+        self.grid_item = gl.GLGridItem()
+        step_x = x_max / 10
+        step_y = y_max / 10
+        self.grid_item.setSize(x_max, y_max)
+        self.grid_item.setSpacing(step_x, step_y)
+        self.grid_item.setColor(COLOR_GRILLA)
+        self.grid_item.translate(x_max / 2, y_max / 2, 0)
+        self.view.addItem(self.grid_item)
 
-        colores = self.cmap(np.zeros_like(self.z_grid)).reshape(-1, 4)
-
+        # ── Superficie inicial (ceros) ──
+        colores = self._z_a_colores(self.z_raw)
         self.surface_item = gl.GLSurfacePlotItem(
-            x=self.xs,
-            y=self.ys,
-            z=self.z_grid,
+            x=self.xs, y=self.ys, z=self.z_vis,
             colors=colores,
             shader='shaded',
-            smooth=False
+            smooth=True          # smooth=True se ve más científico
         )
-
         self.view.addItem(self.surface_item)
 
-        self._dibujar_ejes_enumerados()
-        self.ajustar_camara(x_max, y_max)
+        self._dibujar_ejes()
+        self._ajustar_camara()
 
-    # ---------------------------------------------------------
-    # ESCALADO Z
-    # ---------------------------------------------------------
-
-    def set_z_scale(self, factor):
-        self.z_scale_factor = max(factor, 1e-12)
-        self.auto_scale = False
-        self._recalcular_superficie()
+    # ──────────────────────────── ESCALADO Z ─────────────────────────────────
 
     def set_auto_z_scale(self, enabled=True):
         self.auto_scale = enabled
         self._recalcular_superficie()
 
-    def _es_fase(self):
-        """Indica si la gráfica muestra fase (soporta valores negativos)."""
-        return "°" in self.titulo_z_texto or "Fase" in self.titulo_z_texto.lower()
+    def set_z_scale(self, factor: float):
+        self.z_scale_factor = max(factor, 1e-12)
+        self.auto_scale     = False
+        self._recalcular_superficie()
 
     def _recalcular_superficie(self):
         if self.surface_item is None:
             return
 
-        visual_height_target = max(self.x_max, self.y_max) * 0.4
-        z_min = self.z_raw.min()
-        z_max = self.z_raw.max()
-        rng = max(z_max - z_min, 1e-12)
+        z_min = float(self.z_raw.min())
+        z_max = float(self.z_raw.max())
+        rng   = max(z_max - z_min, 1e-12)
+        altura_visual = max(self.x_max, self.y_max) * 0.35
 
         if self.auto_scale:
-            scale = visual_height_target / rng
+            scale = altura_visual / rng
         else:
             scale = self.z_scale_factor
 
-        self.z_grid = (self.z_raw - z_min) * scale
+        # superficie desplazada a z=0 en el piso
+        self.z_vis = (self.z_raw - z_min) * scale
 
-        if rng > 1e-12:
-            z_norm = (self.z_raw - z_min) / rng
-        else:
-            z_norm = np.zeros_like(self.z_raw)
+        colores    = self._z_a_colores(self.z_raw)
+        self.surface_item.setData(z=self.z_vis, colors=colores)
 
-        colores = self.cmap(z_norm).reshape(-1, 4)
-        self.surface_item.setData(z=self.z_grid, colors=colores)
-
-        z_visual_range = max(float(np.ptp(self.z_grid)), 0.01)
-        self._actualizar_eje_z_visual(z_min, z_max, z_visual_range)
+        # actualizar ticks z y colorbar
+        self._actualizar_ticks_z(z_min, z_max)
+        self._estilizar_colorbar(z_min, z_max)
         self.view.update()
 
-    # ---------------------------------------------------------
-    # EJE Z CON MAGNITUD REAL
-    # ---------------------------------------------------------
+    def _z_a_colores(self, z: np.ndarray) -> np.ndarray:
+        """Normaliza z y mapea a RGBA usando el colormap elegido."""
+        z_min = float(z.min())
+        z_max = float(z.max())
+        rng   = max(z_max - z_min, 1e-12)
+        z_norm = (z - z_min) / rng
+        return self._cmap_mpl(z_norm).reshape(-1, 4)
 
-    def _dibujar_ejes_enumerados(self):
-        # Limpiar items previos de ejes si existen
+    # ──────────────────────────── EJES ────────────────────────────────────────
+
+    def _dibujar_ejes(self):
         for item in self.axes_items:
             self.view.removeItem(item)
-        self.axes_items = []
+        self.axes_items    = []
+        self.z_ticks_items = []
 
+        z_height = max(self.x_max, self.y_max) * 0.35
+        pasos    = 5
+
+        # eje OpenGL base (líneas X Y Z)
         axis = gl.GLAxisItem()
-        z_height = max(self.x_max, self.y_max) * 0.4
-        axis.setSize(self.x_max, self.y_max, z_height)
+        axis.setSize(self.x_max * 1.05, self.y_max * 1.05, z_height)
         self.view.addItem(axis)
         self.axes_items.append(axis)
 
-        pasos = 5
-
-        # --- ETIQUETA Z PRINCIPAL (Pasamos la fuente aquí mismo) ---
-        self.z_label = gl.GLTextItem(
-            pos=(0, 0, z_height * 1.2),
-            text=self.titulo_z_texto,
-            color=(255, 255, 255, 200),
-            font=self.font_titulo  # <--- SE PASA COMO ARGUMENTO
+        # ── Etiqueta eje X ──
+        self._add_text(
+            (self.x_max * 1.12, self.y_max * 0.5, 0),
+            "X (mm)", self.font_label, (200, 200, 200, 220)
         )
-        self.view.addItem(self.z_label)
-        self.axes_items.append(self.z_label)
-
-        # --- MARCAS Z DINÁMICAS ---
-        self.z_ticks = []
         for i in range(pasos + 1):
-            tick = gl.GLTextItem(
-                pos=(0, 0, 0), 
-                text="", 
-                color=(255, 255, 255, 120),
-                font=self.font_ejes  # <--- FUENTE PEQUEÑA AQUÍ
+            v = self.x_max / pasos * i
+            self._add_text(
+                (v, -self.y_max * 0.08, 0),
+                f"{v:.0f}", self.font_tick, (180, 180, 180, 160)
             )
-            self.view.addItem(tick)
-            self.axes_items.append(tick)
-            self.z_ticks.append(tick)
 
-        # --- EJE X ---
-        t_x = gl.GLTextItem(
-            pos=(self.x_max*1.1, -self.y_max*0.1, 0), 
-            text="X mm", 
-            color=(255,255,255,150),
-            font=self.font_ejes
+        # ── Etiqueta eje Y ──
+        self._add_text(
+            (-self.x_max * 0.08, self.y_max * 1.12, 0),
+            "Y (mm)", self.font_label, (200, 200, 200, 220)
         )
-        self.view.addItem(t_x)
-        self.axes_items.append(t_x)
-
         for i in range(pasos + 1):
-            val = (self.x_max / pasos) * i
+            v = self.y_max / pasos * i
+            self._add_text(
+                (-self.x_max * 0.1, v, 0),
+                f"{v:.0f}", self.font_tick, (180, 180, 180, 160)
+            )
+
+        # ── Ticks eje Z (dinámicos) ──
+        self._add_text(
+            (-self.x_max * 0.1, 0, z_height * 1.18),
+            self.titulo_z, self.font_label, (220, 220, 220, 230)
+        )
+        for i in range(pasos + 1):
             t = gl.GLTextItem(
-                pos=(val, -self.y_max*0.1, 0), 
-                text=f"{val:.1f}", 
-                color=(255,255,255,100),
-                font=self.font_ejes
+                pos=(0, 0, 0), text="",
+                color=(180, 220, 180, 180),
+                font=self.font_tick
             )
             self.view.addItem(t)
             self.axes_items.append(t)
+            self.z_ticks_items.append(t)
 
-        # --- EJE Y ---
-        t_y = gl.GLTextItem(
-            pos=(-self.x_max*0.1, self.y_max * 1.1, 0), 
-            text="Y mm", 
-            color=(255,255,255,150),
-            font=self.font_ejes
-        )
-        self.view.addItem(t_y)
-        self.axes_items.append(t_y)
+    def _add_text(self, pos, text, font, color):
+        t = gl.GLTextItem(pos=pos, text=text, color=color, font=font)
+        self.view.addItem(t)
+        self.axes_items.append(t)
+        return t
 
-        for i in range(pasos + 1):
-            val = (self.y_max / pasos) * i
-            t = gl.GLTextItem(
-                pos=(-self.x_max*0.1, val, 0), 
-                text=f"{val:.1f}", 
-                color=(255,255,255,100),
-                font=self.font_ejes
-            )
-            self.view.addItem(t)
-            self.axes_items.append(t)
-
-    def _actualizar_eje_z_visual(self, z_min, z_max, z_visual_range=None):
-        if z_visual_range is None:
-            z_visual_range = max(self.x_max, self.y_max) * 0.4
-        pasos = len(self.z_ticks) - 1
-
-        for i in range(pasos + 1):
-            frac = i / pasos
-            z_real = z_min + frac * (z_max - z_min)
-            z_visual = frac * z_visual_range
-
-            if "µV" in self.titulo_z_texto:
-                texto_tick = f"{z_real*1e6:.2f} µV"
+    def _actualizar_ticks_z(self, z_min: float, z_max: float):
+        if not self.z_ticks_items:
+            return
+        z_height = max(self.x_max, self.y_max) * 0.35
+        pasos    = len(self.z_ticks_items) - 1
+        for i, tick in enumerate(self.z_ticks_items):
+            frac    = i / pasos
+            z_real  = z_min + frac * (z_max - z_min)
+            z_pos   = frac * z_height
+            if "µV" in self.titulo_z:
+                label = f"{z_real*1e6:.2f} µV"
+            elif "°" in self.titulo_z:
+                label = f"{z_real:.1f}°"
             else:
-                texto_tick = f"{z_real:.1f}°"
+                label = f"{z_real:.3g}"
+            tick.setData(pos=(-self.x_max * 0.12, 0, z_pos), text=label)
 
-            self.z_ticks[i].setData(pos=(0, 0, z_visual), text=texto_tick)
+    # ──────────────────────────── CÁMARA ─────────────────────────────────────
 
-        if self.axes_items:
-            self.axes_items[0].setSize(self.x_max, self.y_max, z_visual_range)
-        if len(self.axes_items) > 1:
-            self.z_label.setData(pos=(0, 0, z_visual_range * 1.2), text=self.titulo_z_texto)
+    def _ajustar_camara(self):
+        cx = self.x_max / 2
+        cy = self.y_max / 2
+        dist = max(self.x_max, self.y_max) * 1.8
+        self.view.setCameraPosition(
+            pos=QVector3D(cx, cy, 0),
+            distance=dist,
+            elevation=28,
+            azimuth=45
+        )
+
+    # ──────────────────────── ACTUALIZACIÓN DE DATOS ─────────────────────────
+
+    def actualizar_punto(self, x_val: float, y_val: float, z_val: float):
+        ix = int(np.clip(round(x_val / self.res), 0, self.nx - 1))
+        iy = int(np.clip(round(y_val / self.res), 0, self.ny - 1))
+        self.z_raw[ix, iy] = z_val
+        self._recalcular_superficie()
+
+    def cargar_datos_completos(self, x_max, y_max, res, z_grid):
+        self.z_raw = np.asarray(z_grid, dtype=float).copy()
+        self.nx, self.ny = self.z_raw.shape
+        self.x_max = x_max
+        self.y_max = y_max
+        self.res   = res
+        self.xs    = np.linspace(0, x_max, self.nx)
+        self.ys    = np.linspace(0, y_max, self.ny)
+
+        if self.surface_item:
+            self.view.removeItem(self.surface_item)
+        colores = self._z_a_colores(self.z_raw)
+        self.surface_item = gl.GLSurfacePlotItem(
+            x=self.xs, y=self.ys,
+            z=np.zeros_like(self.z_raw),
+            colors=colores, shader='shaded', smooth=True
+        )
+        self.view.addItem(self.surface_item)
+
+        self.z_max_historico = max(np.abs(self.z_raw).max(), 1e-9)
+        self.auto_scale = True
+        self._dibujar_ejes()
+        self._ajustar_camara()
+        self._recalcular_superficie()
+
+    # ─────────────────────── DRAG BOTÓN DERECHO = escalar Z ──────────────────
 
     def eventFilter(self, obj, event):
-        """Arrastrar con botón derecho para escalar Z, doble clic izquierdo para pantalla completa."""
         if obj != self.view:
             return False
-
         t = event.type()
-        
         if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
-            self._z_scale_dragging = True
-            self._z_scale_last_y = event.position().y() if hasattr(event, 'position') else event.pos().y()
+            self._dragging_z   = True
+            self._drag_last_y  = event.position().y()
             return True
         if t == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.RightButton:
-            self._z_scale_dragging = False
+            self._dragging_z = False
             return True
-        if t == QEvent.Type.MouseMove and self._z_scale_dragging:
-            visual_height_target = max(self.x_max, self.y_max) * 0.4
+        if t == QEvent.Type.MouseMove and self._dragging_z:
             if self.auto_scale:
-                z_min = self.z_raw.min()
-                z_max = self.z_raw.max()
-                rng = max(z_max - z_min, 1e-12)
-                self.z_scale_factor = visual_height_target / rng
-            py = event.position().y() if hasattr(event, 'position') else event.pos().y()
-            dy = self._z_scale_last_y - py  # Arriba = aumentar escala
-            self._z_scale_last_y = py
+                altura = max(self.x_max, self.y_max) * 0.35
+                rng = max(float(self.z_raw.max() - self.z_raw.min()), 1e-12)
+                self.z_scale_factor = altura / rng
+            py = event.position().y()
+            dy = self._drag_last_y - py
+            self._drag_last_y = py
             factor = 1.0 + dy * 0.008
             self.z_scale_factor *= max(0.5, min(2.0, factor))
-            self.z_scale_factor = max(1e-6, min(1e12, self.z_scale_factor))
+            self.z_scale_factor  = max(1e-6, min(1e12, self.z_scale_factor))
             self.auto_scale = False
             self._recalcular_superficie()
             return True
         return False
 
-    # ---------------------------------------------------------
-    # ACTUALIZACIÓN DE DATOS
-    # ---------------------------------------------------------
 
-    def actualizar_punto(self, x_val, y_val, z_val):
-        ix = int(np.clip(round(x_val / self.res), 0, self.nx - 1))
-        iy = int(np.clip(round(y_val / self.res), 0, self.ny - 1))
-
-        # CAMBIO AQUÍ: Acceso como [ix, iy]
-        self.z_raw[ix, iy] = z_val 
-
-        abs_z = abs(z_val)
-        if abs_z > self.z_max_historico:
-            self.z_max_historico = abs_z
-
-        self._recalcular_superficie()
-
-    def cargar_datos_completos(self, x_max, y_max, res, z_grid):
-        """
-        Carga una malla completa y reajusta la cámara y la escala Z 
-        para que los datos siempre ocupen un espacio visible.
-        """
-        # 1. Actualizar datos internos
-        self.z_raw = np.asarray(z_grid, dtype=float).copy()
-        self.nx, self.ny = self.z_raw.shape 
-        
-        self.x_max = x_max
-        self.y_max = y_max
-        self.res = res
-
-        # 2. Re-generar coordenadas para que coincidan exactamente con la forma de z_raw
-        self.xs = np.linspace(0, x_max, self.nx)
-        self.ys = np.linspace(0, y_max, self.ny)
-
-        # 3. Recrear el item de superficie para evitar el error de "shape mismatch"
-        if self.surface_item:
-            self.view.removeItem(self.surface_item)
-
-        # Inicializamos con ceros, pero con el tamaño correcto
-        colores = self.cmap(np.zeros_like(self.z_raw)).reshape(-1, 4)
-        self.surface_item = gl.GLSurfacePlotItem(
-            x=self.xs,
-            y=self.ys,
-            z=np.zeros_like(self.z_raw), 
-            colors=colores,
-            shader='shaded',
-            smooth=False
-        )
-        self.view.addItem(self.surface_item)
-
-        # 4. RESET DE ESCALA Y CÁMARA (Crucial para que no se vea como un punto)
-        self.z_max_historico = max(np.abs(self.z_raw).max(), 1e-9)
-        self.auto_scale = True
-        
-        # Redibujamos ejes con las nuevas dimensiones x_max, y_max
-        self._dibujar_ejes_enumerados()
-        
-        # Forzamos a la cámara a centrarse en el nuevo objeto pequeño (2x3)
-        self.ajustar_camara(x_max, y_max)
-        
-        # Calculamos la escala visual final
-        self._recalcular_superficie()
-
-
-# ---------------------------------------------------------
-# PRUEBA AUTOMÁTICA
-# ---------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+#  DEMO
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import matplotlib.ticker   # necesario para el formatter de la colorbar
+
     app = QApplication(sys.argv)
-    ventana = Grafica3DRealTime()
-    ventana.resize(900, 700)
+    ventana = Grafica3DRealTime(titulo_z="Amplitud (µV)", titulo="Mapa 3D en tiempo real")
+    ventana.resize(1000, 680)
+    ventana.setWindowTitle("Mapa 3D — tiempo real")
     ventana.show()
 
-    # Generador de señal tipo onda viajera en microvoltios
-    t = 0
+    t_sim = 0.0
 
     def actualizar():
-        global t
-        t += 0.1
-        for x in np.linspace(0, ventana.x_max, 10):
-            for y in np.linspace(0, ventana.y_max, 10):
-                z = 5e-6 * np.sin(0.1*x + 0.1*y + t)
+        global t_sim
+        t_sim += 0.08
+        for x in np.linspace(0, ventana.x_max, 15):
+            for y in np.linspace(0, ventana.y_max, 15):
+                z = 5e-6 * np.sin(0.08 * x + 0.06 * y + t_sim) * \
+                    np.exp(-0.003 * ((x - 50)**2 + (y - 50)**2))
                 ventana.actualizar_punto(x, y, z)
 
     timer = QTimer()
     timer.timeout.connect(actualizar)
-    timer.start(50)
+    timer.start(60)   # ~16 fps
 
     sys.exit(app.exec())
