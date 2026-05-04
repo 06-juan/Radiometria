@@ -1,4 +1,4 @@
-import sys
+import os
 import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -928,7 +928,7 @@ class MainWindow(QMainWindow):
         self._switch_tab(0)
         self._set_hw_status("measuring", "Barrido XY en curso…")
 
-        exp_id = self.db.iniciar_nuevo_experimento()
+        exp_id = self.db.iniciar_nuevo_experimento(tipo="XY")
         print(f"Experimento ID: {exp_id}")
 
         self.res_actual = self.slider_res.value() / 1000.0
@@ -965,7 +965,7 @@ class MainWindow(QMainWindow):
         self.plot_fase_2d.limpiar()
         self.plot_quad_2d.limpiar()
 
-        exp_id = self.db.iniciar_nuevo_experimento()
+        exp_id = self.db.iniciar_nuevo_experimento(tipo="FREQ")
         print(f"Experimento ID: {exp_id}")
 
         x_max = self.slider_x.value() / 10.0
@@ -986,6 +986,7 @@ class MainWindow(QMainWindow):
         self._update_stats(r=data_dict.get('R'), phi=data_dict.get('phi'))
 
     def emergency_stop(self):
+        self.db.finalizar_experimento()
         if self.worker and self.worker.isRunning():
             self.mesa.stop_current_operation()
             self.worker.wait()
@@ -1009,11 +1010,13 @@ class MainWindow(QMainWindow):
     def measurement_finished(self):
         self.toggle_inputs(True)
         self._set_hw_status("connected", "SR830 conectado · Barrido finalizado")
+        self.db.finalizar_experimento()
         self._refrescar_combo_mediciones()
         QMessageBox.information(self, "Finalizado", "Barrido completado y datos guardados.")
 
     def measurement_error(self, err_msg):
         self.toggle_inputs(True)
+        self.db.finalizar_experimento()
         self._set_hw_status("connected", f"Error: {err_msg[:60]}")
         QMessageBox.critical(self, "Error", err_msg)
 
@@ -1095,15 +1098,25 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Visualizar", "Selecciona una medición.")
             return
 
-        res = self.db_viewer.conn.execute(
-            "SELECT COUNT(DISTINCT laser_freq) FROM mediciones WHERE experiment_id = ?",
-            [exp_id]
-        ).fetchone()
+        path_parquet = os.path.join("data", f"{exp_id}.parquet")
 
-        if res[0] > 1:
-            self._cargar_vista_2d(exp_id)
-        else:
-            self._cargar_vista_3d(exp_id)
+        if not os.path.exists(path_parquet):
+            QMessageBox.critical(self, "Error", f"No se encontró el archivo: {path_parquet}")
+            return
+
+        try:
+            # Consultamos directamente el archivo Parquet usando la ruta entre comillas simples
+            # Esto evita el error de "Table with name mediciones does not exist"
+            query = f"SELECT COUNT(DISTINCT laser_freq) FROM '{path_parquet}'"
+            res = self.db_viewer.conn.execute(query).fetchone()
+
+            if res and res[0] > 1:
+                self._cargar_vista_2d(exp_id)
+            else:
+                self._cargar_vista_3d(exp_id)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error de base de datos", f"No se pudo leer el archivo: {e}")
 
     def _cargar_vista_2d(self, exp_id):
         curves_data = self.db_viewer.cargar_medicion_2d(exp_id)

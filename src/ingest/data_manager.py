@@ -34,10 +34,10 @@ class DataManager:
         self.conn.execute(query)
 
     def iniciar_nuevo_experimento(self, tipo="XY"):
-        """Genera ID corto: 20240520_1430_XY"""
+        """Genera ID corto: XY_20240520_1430"""
         now = datetime.now()
         timestamp = now.strftime('%Y%m%d_%H%M')
-        self.current_experiment_id = f"{timestamp}_{tipo.upper()}"
+        self.current_experiment_id = f"{tipo.upper()}_{timestamp}"
         # Limpiar buffer por si acaso
         self.conn.execute("DELETE FROM buffer_activo")
         return self.current_experiment_id
