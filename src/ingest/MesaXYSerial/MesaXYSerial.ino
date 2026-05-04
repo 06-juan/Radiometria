@@ -10,8 +10,8 @@
 #define Y_LIMIT_PIN 10
 
 // Configuración de pasos por milímetro (ajustar según hardware)
-const float STEPS_PER_MM_X = 6400.0; // 1/16 microstepping
-const float STEPS_PER_MM_Y = 6400.0;
+const float STEPS_PER_MM_X = 3200.0; // 1/8 microstepping
+const float STEPS_PER_MM_Y = 3200.0;
 
 // Parámetros de homing
 const float X_OFFSET_MM = 1.0;
