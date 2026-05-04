@@ -52,6 +52,10 @@ class MesaXY:
         
         # Espera inicial de seguridad para que el primer punto no sea un transitorio
         time.sleep(self.lockin.tiempo_espera * 2) 
+        
+        self.lockin.Reserve()
+        
+        self.lockin.auto_gain()
 
         # 2. INICIO DEL COMANDO
         cmd = f"SWEEP {x_max} {y_max} {res}"
@@ -105,6 +109,8 @@ class MesaXY:
             freqs = np.linspace(f_start, f_end, steps)
             
         punto_actual = 0
+
+        self.lockin.Reserve() #ajustamos reserve del lockin
         
         while not self._abort:
             if self.ser.in_waiting:
@@ -112,16 +118,15 @@ class MesaXY:
                 if not line: continue
                 
                 if line.startswith("POS"):
-                    pass # Podríamos extraer la posición si se requiere
+                    pass
                 elif line == "LASER":
                     if self._abort: break
 
                     self.ajustar_frecuencia(freqs[0],True)
                     self.lockin.set_amplitude(LASER_ON_VOLTAGE)
                     time.sleep(self.lockin.tiempo_espera + 2)
-                    # --- AQUÍ EJECUTAMOS EL AUTO GAIN ---
+                    
                     self.lockin.auto_gain()
-                    time.sleep(5) 
                     
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:
