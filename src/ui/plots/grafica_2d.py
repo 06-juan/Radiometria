@@ -19,7 +19,7 @@ class Grafica2DRealTime(QWidget):
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         
         # Seteamos el log mode.
-        self.plot_widget.setLogMode(x=log_x, y=log_y)
+        #self.plot_widget.setLogMode(x=log_x, y=log_y)
 
         # Si es logarítmico, forzamos un formateador de etiquetas más robusto
         if log_x:
@@ -41,8 +41,15 @@ class Grafica2DRealTime(QWidget):
         self.z_data_list = []
         
         # Colores para múltiples curvas
-        self.colors = ['#00FF00', '#FF0000', '#00FFFF', '#FFFF00', '#FF00FF', '#0000FF']
-        
+        # Colores extraídos de la escala Viridis (6 niveles uniformes)
+        self.colors = [
+            '#440154', # Morado oscuro (inicio)
+            '#414487', # Azul violáceo
+            '#2a788e', # Azul verdoso
+            '#22a884', # Verde esmeralda
+            '#7ad151', # Verde lima
+            '#fde725'  # Amarillo (final)
+        ]
         layout.addWidget(self.plot_widget)
 
     def _on_clicked(self, event):
@@ -60,7 +67,7 @@ class Grafica2DRealTime(QWidget):
                 real_x = 10**x if self.log_x else x
                 real_y = 10**y if self.log_y else y
                 
-                self.label.setText(f"Freq: {real_x:.2f} Hz\nVal: {real_y:.2f}")
+                self.label.setText(f"Freq: {real_x:.1f} Hz\nVal: {real_y:.1f}")
                 self.label.setPos(x, y)
                 self.label.show()
                 # Ocultar después de 3 segundos
