@@ -98,7 +98,7 @@ class DataManager:
         if not os.path.exists(path): return None
 
         try:
-            query = f"SELECT x_pos, y_pos, magnitude_r, phase_phi FROM '{path}' ORDER BY y_pos ASC, x_pos ASC"
+            query = f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC"
             rows = self.conn.execute(query).fetchall()
             
             if not rows: return None
@@ -107,6 +107,7 @@ class DataManager:
             y_vals = np.array([r[1] for r in rows])
             r_vals = np.array([r[2] for r in rows])
             phi_vals = np.array([r[3] for r in rows])
+            freq_vals = np.array([r[4] for r in rows])
 
             x_unique = np.unique(x_vals)
             y_unique = np.unique(y_vals)
@@ -118,6 +119,8 @@ class DataManager:
             x_max, y_max = float(x_vals.max()), float(y_vals.max())
             nx, ny = int(x_max / res) + 1, int(y_max / res) + 1
 
+            laser_freq = freq_vals[0]
+
             z_mag = np.zeros((ny, nx))
             z_fase = np.zeros((ny, nx))
             
@@ -126,6 +129,8 @@ class DataManager:
                 iy = int(np.clip(round(y / res), 0, ny - 1))
                 z_mag[iy, ix] = r
                 z_fase[iy, ix] = phi
+
+            print(f'"x_max": {x_max}, "y_max": {y_max}, "res": {res}, "freq": {laser_freq}')
 
             return {
                 "x_max": x_max, "y_max": y_max, "res": res,
