@@ -60,8 +60,8 @@ class SR830:
         # Buscamos el índice adecuado en el hardware
         indice_optimo = 15 
         for i in sorted(self.TC_MAP.keys()):
-            # Mantenemos un mínimo de 100ms para evitar ruido excesivo
-            if self.TC_MAP[i] >= periodo_objetivo and self.TC_MAP[i] >= 100e-3:
+            # Mantenemos un mínimo de 30ms para evitar ruido excesivo
+            if self.TC_MAP[i] >= periodo_objetivo and self.TC_MAP[i] >= 30e-3:
                 indice_optimo = i
                 break
         
@@ -69,7 +69,7 @@ class SR830:
         self.current_tc_val = self.TC_MAP[indice_optimo]
         self.tiempo_espera = 5 * self.current_tc_val
         
-        print(f"[SR830] MODO AUTO: Freq {freq:.2f}Hz -> TC {self.current_tc_val}s")
+        #print(f"[SR830] MODO AUTO: Freq {freq:.2f}Hz -> TC {self.current_tc_val}s")
         time.sleep(self.tiempo_espera)
 
     def get_measurements(self):
@@ -93,7 +93,6 @@ class SR830:
 
     def auto_gain(self):
         """Ejecuta AGAN y espera a que el hardware termine el ajuste."""
-        print("[SR830] Ejecutando Auto Gain...")
         self.inst.write("AGAN")
         # El ajuste automático de ganancia puede tardar un par de segundos
         # en ciclar internamente por los rangos de sensibilidad.
@@ -101,7 +100,7 @@ class SR830:
 
     def Reserve(self):
         """# Ponemos modo en Low Reserve para no destruir la señal del sensor"""
-        lockin.write("RSAV 2")
+        self.inst.write("RMOD 2")
         time.sleep(1.0)
 
 if __name__ == "__main__":
