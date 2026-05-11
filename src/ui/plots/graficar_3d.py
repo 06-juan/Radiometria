@@ -241,7 +241,7 @@ class Grafica3DRealTime(QWidget):
 
         # ── Etiqueta eje X ──
         self._add_text(
-            (self.x_max * 1.12, self.y_max * 0.5, 0),
+            (self.x_max * 1.2, self.y_max * 0.08 , 0),
             "X (mm)", self.font_label, (200, 200, 200, 220)
         )
         for i in range(pasos + 1):

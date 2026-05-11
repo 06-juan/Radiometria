@@ -695,9 +695,9 @@ class MainWindow(QMainWindow):
         widget_2d = QWidget()
         layout_2d = QHBoxLayout(widget_2d)
         layout_2d.setSpacing(12)
-        self.plot_mag_2d  = Grafica2DRealTime("Amplitud R (V) vs Freq",  log_x=False, log_y=False)
-        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq",         log_x=False, log_y=False)
-        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (V) vs Freq", log_x=False, log_y=False)
+        self.plot_mag_2d  = Grafica2DRealTime("Amplitud R (V) vs Freq",  log_x=True, log_y=True)
+        self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq",         log_x=True, log_y=False)
+        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (V) vs Freq", log_x=True, log_y=True)
         layout_2d.addWidget(self._wrap_plot_card(self.plot_mag_2d,  "AMPLITUD  R (V)",    "mag2d_meta"))
         layout_2d.addWidget(self._wrap_plot_card(self.plot_fase_2d, "FASE  φ (°)",         "fase2d_meta"))
         layout_2d.addWidget(self._wrap_plot_card(self.plot_quad_2d, "CUADRATURA  Y (V)",  "quad2d_meta"))
@@ -972,7 +972,7 @@ class MainWindow(QMainWindow):
         y_max = self.slider_y.value() / 10.0
 
         self.toggle_inputs(False)
-        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 10000.0, 250)#Rango Frecuencias
+        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 100000.0, 100)#frecuancia de muestreos
         self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
         self.worker_cruz.finished_signal.connect(self.measurement_finished)
         self.worker_cruz.error_signal.connect(self.measurement_error)
