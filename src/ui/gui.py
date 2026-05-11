@@ -972,7 +972,7 @@ class MainWindow(QMainWindow):
         y_max = self.slider_y.value() / 10.0
 
         self.toggle_inputs(False)
-        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 100000.0, 100)#frecuancia de muestreos
+        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 5000.0, 100)#frecuancia de muestreos
         self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
         self.worker_cruz.finished_signal.connect(self.measurement_finished)
         self.worker_cruz.error_signal.connect(self.measurement_error)
