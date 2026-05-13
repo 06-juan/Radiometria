@@ -601,7 +601,7 @@ class MainWindow(QMainWindow):
             edit.setFixedHeight(24)
             edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if is_int:
-                edit.setValidator(QIntValidator(1, 10000))
+                edit.setValidator(QIntValidator(1, 100000))
             else:
                 v = QDoubleValidator(0.1, 100000.0, 2)
                 v.setNotation(QDoubleValidator.Notation.StandardNotation)
@@ -631,8 +631,6 @@ class MainWindow(QMainWindow):
         act_layout = QVBoxLayout(actions_frame)
         act_layout.setContentsMargins(14, 4, 14, 6)
         act_layout.setSpacing(6)
-
-        act_layout.addWidget(make_label("ACCIONES", "section_label"))
 
         home_laser_row = QHBoxLayout()
         home_laser_row.setSpacing(6)
@@ -1068,22 +1066,34 @@ class MainWindow(QMainWindow):
     def start_measurement_cruz(self):
         if not self.mesa:
             return
+        
+        # Validar antes de lanzar el hilo
+        self._validar_frecuencias()
+        
+        try:
+            f_start = float(self.input_f_start.text().replace(',', '.'))
+            f_end   = float(self.input_f_end.text().replace(',', '.'))
+            steps   = int(self.input_f_pts.text())
+        except ValueError:
+            QMessageBox.warning(self, "Error de Parámetros", "Por favor, ingresa valores numéricos válidos en las frecuencias y pasos.")
+            return
+
         self._npts = 0
         self._switch_tab(1)
-        self._set_hw_status("measuring", "Barrido de frecuencia en curso…")
+        self._set_hw_status("measuring", f"Barrido Freq: {f_start} - {f_end} Hz")
 
         self.plot_mag_2d.limpiar()
         self.plot_fase_2d.limpiar()
         self.plot_quad_2d.limpiar()
 
         exp_id = self.db.iniciar_nuevo_experimento(tipo="FREQ")
-        print(f"Experimento ID: {exp_id}")
 
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
 
         self.toggle_inputs(False)
-        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 5000.0, 100)#frecuancia de muestreos
+        # Usamos los valores capturados de los QLineEdit
+        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, f_start, f_end, steps)
         self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
         self.worker_cruz.finished_signal.connect(self.measurement_finished)
         self.worker_cruz.error_signal.connect(self.measurement_error)
