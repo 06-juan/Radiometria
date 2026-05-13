@@ -6,14 +6,15 @@ LASER_ON_VOLTAGE = 5
 LASER_OFF_VOLTAGE = 0.6
 
 class SR830:
-    def __init__(self, resource_name='GPIB0::8::INSTR', timeout=10000, tc_constante=True):
+    def __init__(self, resource_name='GPIB0::8::INSTR', timeout=10000, tc_constante=False):
         self.rm = pyvisa.ResourceManager()
         self.inst = self.rm.open_resource(resource_name)
         self.inst.timeout = timeout
         
-        # Indica si usaremos 100ms fijo o ajuste automático
+        # Indica si usaremos TC fijo o automático
         self.tc_constante = tc_constante
         
+        # Mapa de frecuencias Lockin
         self.TC_MAP = {
             0: 10e-6, 1: 30e-6, 2: 100e-6, 3: 300e-6,
             4: 1e-3,  5: 3e-3,  6: 10e-3,  7: 30e-3,
@@ -21,7 +22,7 @@ class SR830:
             12: 10.0, 13: 30.0, 14: 100.0, 15: 300.0
         }
         self.current_tc_val = 0.3
-        self.tiempo_espera = 1.5
+        self.tiempo_espera = 1.0
 
     def set_frequency(self, freq, es_primero=False):
         """Establece la frecuencia y decide qué TC aplicar."""
@@ -29,10 +30,11 @@ class SR830:
         self.inst.write(f'FREQ {freq}')
         
         if self.tc_constante and freq < 300:
-            self._set_tc_fija(8) # Índice 9 = 300 ms
-            #self._ajustar_tc_automatico(freq)
+            self._set_tc_fija(8)
+
         elif self.tc_constante:
             self._set_tc_fija(7)
+
         else:
             self._ajustar_tc_automatico(freq)
 
@@ -50,8 +52,6 @@ class SR830:
         self.inst.write(f'OFLT {indice}')
         self.current_tc_val = self.TC_MAP[indice]
         self.tiempo_espera = 5 * self.current_tc_val
-        
-        time.sleep(self.tiempo_espera)
 
     def _ajustar_tc_automatico(self, freq):
         """Cálculo dinámico: TC >= 10 ciclos (TC >= 10/f)."""
@@ -67,10 +67,7 @@ class SR830:
         
         self.inst.write(f'OFLT {indice_optimo}')
         self.current_tc_val = self.TC_MAP[indice_optimo]
-        self.tiempo_espera = 5 * self.current_tc_val
-        
-        #print(f"[SR830] MODO AUTO: Freq {freq:.2f}Hz -> TC {self.current_tc_val}s")
-        time.sleep(self.tiempo_espera)
+        self.tiempo_espera = 5 * self.current_tc_vals
 
     def get_measurements(self):
         """SNAP? 1,2,3,4 obtiene X, Y, R, Theta de un solo golpe."""
@@ -88,6 +85,7 @@ class SR830:
         self.inst.write(f'AUXV 3, {voltage}')
         
     def close(self):
+        """Cierra la conexion"""
         self.inst.close()
         self.rm.close()
 

@@ -392,16 +392,17 @@ class WorkerThread(QThread):
     finished_signal = pyqtSignal()
     error_signal    = pyqtSignal(str)
 
-    def __init__(self, mesa_instance, x_max, y_max, res):
+    def __init__(self, mesa_instance, x_max, y_max, res, f):
         super().__init__()
         self.mesa  = mesa_instance
         self.x_max = x_max
         self.y_max = y_max
         self.res   = res
+        self.f     = f
 
     def run(self):
         try:
-            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res):
+            for x, y, z_data in self.mesa.sweep_and_measure_generator(self.x_max, self.y_max, self.res, self.f):
                 self.data_signal.emit(x, y, z_data)
             self.finished_signal.emit()
         except Exception as e:
@@ -927,13 +928,11 @@ class MainWindow(QMainWindow):
         self._switch_tab(0)
         self._set_hw_status("measuring", "Barrido XY en curso…")
 
-        self.current_freq = self.slider_freq.value()
-        self.mesa.ajustar_frecuencia(self.current_freq)
-
         exp_id = self.db.iniciar_nuevo_experimento()
         print(f"Experimento ID: {exp_id}")
 
         self.res_actual = self.slider_res.value() / 1000.0
+        self.current_freq = self.slider_freq.value()
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
 
@@ -941,7 +940,7 @@ class MainWindow(QMainWindow):
         self.plotter_mag.inicializar_malla(x_max, y_max, self.res_actual)
 
         self.toggle_inputs(False)
-        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual)
+        self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual, self.current_freq)
         self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
         self.worker.error_signal.connect(self.measurement_error)
@@ -973,7 +972,7 @@ class MainWindow(QMainWindow):
         y_max = self.slider_y.value() / 10.0
 
         self.toggle_inputs(False)
-        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 10000.0, 250)
+        self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, 100.0, 10000.0, 250)#Rango Frecuencias
         self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
         self.worker_cruz.finished_signal.connect(self.measurement_finished)
         self.worker_cruz.error_signal.connect(self.measurement_error)

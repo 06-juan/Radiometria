@@ -9,18 +9,27 @@ except ImportError:
 class MesaXY:
     def __init__(self, port='COM3', baudrate=9600, timeout=5):
         try:
+            #conexion Lockin
             self.lockin = SR830()
-        except:
-            print("Error conectando el lockin")
-            #hacer que el error sea en la ventana emergente de gui
-            raise()
-        self.ser = serial.Serial(port, baudrate, timeout=timeout)
+        except Exception as e:
+            raise RuntimeError(f"Error de conexión con Lock-in SR830: {e}")
+        
+        try:
+            #conexion Arduino
+            self.ser = serial.Serial(port, baudrate, timeout=timeout)
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
+        except Exception as e:
+            raise RuntimeError(f"Error de conexión Arduino: {e}")
+        
         self._abort = False
+        self.t_preinicio = 10
         time.sleep(1) 
         self._wait_for_ready()
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
     def _wait_for_ready(self):
+        """Time Out de 100s"""
         start_time = time.time()
         while True:
             if self.ser.in_waiting:
@@ -31,31 +40,32 @@ class MesaXY:
                 raise RuntimeError("El ARDUINO no respondió READY a tiempo.")
 
     def _send_command(self, cmd):
+        """Envia comando por serial a Arduino"""
         self.ser.write((cmd + "\n").encode('utf-8'))
 
-    def ajustar_frecuencia(self, freq, es_primero=False):
-        """Ajusta frecuencia y maneja automáticamente la TC y la espera."""
-        self.lockin.set_frequency(freq, es_primero)
+    def _pre_start(self, freq):
+        self.lockin.set_frequency(freq,True)
 
-    def sweep_and_measure_generator(self, x_max, y_max, res):
-        """
-        Barrido optimizado: Mantiene el láser encendido para preservar 
-        el equilibrio térmico y elimina tiempos de espera mecánicos redundantes.
-        """
-        self._abort = False
-        current_x, current_y = 0.0, 0.0
-        
-        # 1. PREPARACIÓN: Encendemos el láser ANTES de empezar el movimiento
-        # Esto permite que la muestra alcance una temperatura base.
         self.lockin.set_amplitude(LASER_ON_VOLTAGE)
         
-        # Espera inicial de seguridad para que el primer punto no sea un transitorio
-        time.sleep(5.0) 
+        time.sleep(self.t_preinicio) 
         
         self.lockin.Reserve()
         
         self.lockin.auto_gain()
 
+
+    def sweep_and_measure_generator(self, x_max, y_max, res, f):
+        """
+        Barrido en forma de S y mantiene el láser encendido para preservar 
+        el equilibrio térmico.
+        """
+        self._abort = False
+        current_x, current_y = 0.0, 0.0
+        
+        # 1. PREPARACIÓN
+        self._pre_start(f)
+        
         # 2. INICIO DEL COMANDO
         cmd = f"SWEEP {x_max} {y_max} {res}"
         self._send_command(cmd)
@@ -75,8 +85,7 @@ class MesaXY:
                     # El Arduino ya llegó a la posición y frenó.
                     if self._abort: break
                     
-                    # 3. ESPERA FÍSICA: Solo el tiempo necesario para el filtro del Lock-in
-                    # No apagamos el láser, solo esperamos la estabilización de la señal AC.
+                    # 3. ESPERA FÍSICA: tiempo necesario para el filtro del Lock-in
                     time.sleep(self.lockin.tiempo_espera) 
                     
                     # 4. CAPTURA DE DATOS
@@ -94,22 +103,18 @@ class MesaXY:
         # 5. CIERRE: Solo apagamos al terminar todo el barrido
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
     
-    def cruz_frequency_generator(self, x_max, y_max, f_start, f_end, steps, log_space=False):
-        """Barrido en frecuencia en los 5 puntos de alineación (CRUZ)."""
+    def cruz_frequency_generator(self, x_max, y_max, f_start, f_end, steps):
+        """Barrido en frecuencia en los 5 puntos de alineación."""
         self._abort = False
 
         # 1. INICIO DEL COMANDO
         cmd = f"CRUZ {x_max} {y_max}"
         self._send_command(cmd)
         
-        if log_space:
-            freqs = np.logspace(np.log10(f_start), np.log10(f_end), steps)
-        else:
-            freqs = np.linspace(f_start, f_end, steps)
+        # Dividimos rango frecuencias
+        freqs = np.linspace(f_start, f_end, steps)
             
         punto_actual = 0
-
-        self.lockin.Reserve() #ajustamos reserve del lockin
         
         while not self._abort:
             if self.ser.in_waiting:
@@ -121,25 +126,18 @@ class MesaXY:
                 elif line == "LASER":
                     if self._abort: break
 
-                    self.ajustar_frecuencia(freqs[0],True)
-                    self.lockin.set_amplitude(LASER_ON_VOLTAGE)
-                    time.sleep(self.lockin.tiempo_espera + 2)
-                    
-                    self.lockin.auto_gain()
+                    self._pre_start(freqs[0])
                     
                     # 3. Barrido de Frecuencia en este punto
                     for f in freqs:
                         if self._abort: break
-                        self.ajustar_frecuencia(f)
+                        self.lockin.set_frequency(f, False)
                         
-                        time.sleep(self.lockin.tiempo_espera) 
+                        time.sleep(self.lockin.tiempo_espera)
                         z_data = self.lockin.get_measurements()
                         
-                        # Enviamos índice del punto (para curva distinta en GUI)
                         yield punto_actual, f, z_data
                         
-                        
-                        #time.sleep(self.TIEMPO_DE_RELAJACION_TERMICA)
                     self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
                     punto_actual += 1
                     
@@ -154,6 +152,7 @@ class MesaXY:
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
 
     def disable(self):
+        """Desactivamos los motores"""
         self._send_command("EN_OFF")
 
     def stop_current_operation(self):
@@ -163,11 +162,13 @@ class MesaXY:
         self._abort = True
 
     def home(self):
+        """Hacemos que el Arduino haga Home"""
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         self._send_command("HOME")
         self._wait_for_ready()
 
     def close(self):
+        """Cerramos las conexiones"""
         self.lockin.set_amplitude(LASER_OFF_VOLTAGE)
         self.lockin.close()
         if self.ser.is_open: self.ser.close()
