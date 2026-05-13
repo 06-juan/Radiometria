@@ -20,12 +20,6 @@ class Grafica2DRealTime(QWidget):
         
         # Seteamos el log mode.
         self.plot_widget.setLogMode(x=log_x, y=log_y)
-
-        # Si es logarítmico, forzamos un formateador de etiquetas más robusto
-        #if log_x:
-            #ay = self.plot_widget.getAxis('bottom')
-            # Intentar que pyqtgraph no oculte los ticks menores/mayores tan agresivamente
-            #ay.setTickSpacing(major=1.0, minor=1.0) 
         
         # Etiqueta para mostrar coordenadas
         self.label = pg.TextItem(anchor=(0, 1), color='w', fill=(0, 0, 0, 150))

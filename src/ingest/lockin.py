@@ -23,51 +23,58 @@ class SR830:
         }
         self.current_tc_val = 0.3
         self.tiempo_espera = 1.0
+        self.current_slope_factor = 5
 
     def set_frequency(self, freq, es_primero=False):
-        """Establece la frecuencia y decide qué TC aplicar."""
+        """Establece frecuencia, ajusta TC y Slope, y espera al asentamiento."""
         if freq <= 0: return
         self.inst.write(f'FREQ {freq}')
         
-        if self.tc_constante and freq < 300:
-            self._set_tc_fija(8)
-
-        elif self.tc_constante:
-            self._set_tc_fija(7)
-
+        if self.tc_constante:
+            # Configuración fija estándar
+            indice_tc = 8 if freq < 300 else 7
+            self._set_config_fija(indice_tc, slope_index=3) # 24 dB/oct por seguridad
         else:
-            self._ajustar_tc_automatico(freq)
+            self._ajustar_dinamico(freq)
 
-        factor = 10 if es_primero else 5 
-        wait_time = factor * self.current_tc_val
+        wait_time = (10 if es_primero else self.current_slope_factor) * self.current_tc_val
         time.sleep(wait_time)
         
         if es_primero:
-            # "Limpiamos" el buffer haciendo una lectura que nadie va a usar
             self.get_measurements() 
             time.sleep(0.5)
 
-    def _set_tc_fija(self, indice):
-        """Aplica una TC fija (por defecto 100ms)."""
-        self.inst.write(f'OFLT {indice}')
-        self.current_tc_val = self.TC_MAP[indice]
-        self.tiempo_espera = 5 * self.current_tc_val
+    def _ajustar_dinamico(self, freq):
+        """Ajuste automático de TC y Slope según la frecuencia."""
+        # 1. Definir el Slope según el rango de frecuencia
+        # < 100 Hz: 24 dB/oct (index 3) | >= 100 Hz: 12 dB/oct (index 1)
+        if freq < 100:
+            slope_index = 3
+            self.current_slope_factor = 10 # Requiere más tiempo de asentamiento
+        else:
+            slope_index = 1
+            self.current_slope_factor = 7  # Es más rápido
 
-    def _ajustar_tc_automatico(self, freq):
-        """Cálculo dinámico: TC >= 10 ciclos (TC >= 10/f)."""
+        self.inst.write(f'OFSL {slope_index}')
+
+        # 2. Definir la TC (mínimo 10 ciclos y mínimo 30ms)
         periodo_objetivo = 10.0 / freq 
-        
-        # Buscamos el índice adecuado en el hardware
         indice_optimo = 15 
         for i in sorted(self.TC_MAP.keys()):
-            # Mantenemos un mínimo de 30ms para evitar ruido excesivo
             if self.TC_MAP[i] >= periodo_objetivo and self.TC_MAP[i] >= 30e-3:
                 indice_optimo = i
                 break
         
         self.inst.write(f'OFLT {indice_optimo}')
         self.current_tc_val = self.TC_MAP[indice_optimo]
-        self.tiempo_espera = 5 * self.current_tc_val
+
+    def _set_config_fija(self, tc_index, slope_index=3):
+        """Aplica TC y Slope fijos."""
+        self.inst.write(f'OFLT {tc_index}')
+        self.inst.write(f'OFSL {slope_index}')
+        self.current_tc_val = self.TC_MAP[tc_index]
+        # Ajustamos el factor de espera según el slope manual
+        self.current_slope_factor = [5, 7, 9, 10][slope_index]
 
     def get_measurements(self):
         """SNAP? 1,2,3,4 obtiene X, Y, R, Theta de un solo golpe."""
