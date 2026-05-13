@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont, QColor,QDoubleValidator, QIntValidator
 
 from src.ui.plots.graficar_3d import Grafica3DRealTime
 from src.ui.plots.grafica_2d import Grafica2DRealTime
-from src.ingest.mesaxy import MesaXY
+from src.ingest.mesaxy import MesaXY, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 from src.ingest.data_manager import DataManager
 
 
@@ -364,6 +364,33 @@ QStatusBar {
     font-size: 9px;
     border-top: 1px solid rgba(255,255,255,0.05);
 }
+
+/* Laser — apagado */
+QPushButton#btn_laser {
+    border-color: rgba(34,197,94,0.3);
+    color: #5a8a6a;
+}
+QPushButton#btn_laser:hover {
+    background-color: rgba(34,197,94,0.08);
+    border-color: rgba(34,197,94,0.6);
+    color: #22c55e;
+}
+/* Laser — encendido (checked) */
+QPushButton#btn_laser:checked {
+    background-color: rgba(34,197,94,0.12);
+    border-color: rgba(34,197,94,0.7);
+    color: #22c55e;
+}
+QPushButton#btn_laser:checked:hover {
+    background-color: rgba(239,68,68,0.08);
+    border-color: rgba(239,68,68,0.5);
+    color: #fca5a5;
+}
+QPushButton#btn_laser:disabled {
+    color: #3a4155;
+    border-color: rgba(255,255,255,0.04);
+    background-color: #0e1118;
+}
 """
 
 
@@ -607,10 +634,22 @@ class MainWindow(QMainWindow):
 
         act_layout.addWidget(make_label("ACCIONES", "section_label"))
 
-        self.btn_home = QPushButton("↑  Ir a Home")
+        home_laser_row = QHBoxLayout()
+        home_laser_row.setSpacing(6)
+
+        self.btn_home = QPushButton("↑  Home")
         self.btn_home.setObjectName("btn_home")
         self.btn_home.clicked.connect(self.go_home)
-        act_layout.addWidget(self.btn_home)
+
+        self.btn_laser = QPushButton("◉  Laser")
+        self.btn_laser.setObjectName("btn_laser")
+        self.btn_laser.setCheckable(True)
+        self.btn_laser.setEnabled(False)   # solo activo cuando hay conexión
+        self.btn_laser.clicked.connect(self.toggle_laser)
+
+        home_laser_row.addWidget(self.btn_home)
+        home_laser_row.addWidget(self.btn_laser)
+        act_layout.addLayout(home_laser_row)
 
         self.btn_measure = QPushButton("▦  Barrido XY")
         self.btn_measure.setObjectName("btn_measure")
@@ -914,9 +953,22 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
-    # No olvides conectar los eventos en el init o build_sidebar:
-    # self.input_f_start.editingFinished.connect(self._validar_frecuencias)
-    # self.input_f_end.editingFinished.connect(self._validar_frecuencias)
+    def toggle_laser(self):
+        if not self.mesa:
+            self.btn_laser.setChecked(False)
+            return
+        try:
+            if self.btn_laser.isChecked():
+                self.mesa.lockin.set_amplitude(LASER_ON_VOLTAGE)
+                self.btn_laser.setText("◉  ON")
+                self._status_bar.showMessage("Laser encendido")
+            else:
+                self.mesa.lockin.set_amplitude(LASER_OFF_VOLTAGE)
+                self.btn_laser.setText("◉  Laser")
+                self._status_bar.showMessage("Laser apagado")
+        except Exception as e:
+            QMessageBox.warning(self, "Error Laser", f"No se pudo cambiar estado del laser: {e}")
+            self.btn_laser.setChecked(not self.btn_laser.isChecked())  # revertir
 
     def ensure_home_then_do(self, task_function):
         if self.is_homed:
@@ -967,6 +1019,7 @@ class MainWindow(QMainWindow):
         self._set_hw_status("connected", "SR830 conectado")
         self.btn_measure.setEnabled(True)
         self.btn_cruz.setEnabled(True)
+        self.btn_laser.setEnabled(True)
 
         if self.pending_task:
             task = self.pending_task
@@ -1054,6 +1107,9 @@ class MainWindow(QMainWindow):
 
         self._set_hw_status("disconnected", "Desconectado")
         self.btn_home.setText("↑  Ir a Home")
+        self.btn_laser.setEnabled(False)
+        self.btn_laser.setChecked(False)
+        self.btn_laser.setText("◉  Laser")
         self.btn_stop.setEnabled(False)
         self.btn_measure.setEnabled(False)
         self.btn_cruz.setEnabled(False)
