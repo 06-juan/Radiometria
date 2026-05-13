@@ -67,7 +67,7 @@ class SR830:
         
         self.inst.write(f'OFLT {indice_optimo}')
         self.current_tc_val = self.TC_MAP[indice_optimo]
-        self.tiempo_espera = 5 * self.current_tc_vals
+        self.tiempo_espera = 5 * self.current_tc_val
 
     def get_measurements(self):
         """SNAP? 1,2,3,4 obtiene X, Y, R, Theta de un solo golpe."""
