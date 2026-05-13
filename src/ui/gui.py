@@ -642,7 +642,7 @@ class MainWindow(QMainWindow):
         self.btn_laser = QPushButton("◉  Laser")
         self.btn_laser.setObjectName("btn_laser")
         self.btn_laser.setCheckable(True)
-        self.btn_laser.setEnabled(False)   # solo activo cuando hay conexión
+        self.btn_laser.setEnabled(False)
         self.btn_laser.clicked.connect(self.toggle_laser)
 
         home_laser_row.addWidget(self.btn_home)
@@ -994,6 +994,7 @@ class MainWindow(QMainWindow):
         self.btn_home.setEnabled(False)
         self.btn_home.setText("↑  Yendo a home…")
         self.btn_measure.setEnabled(False)
+        self.btn_laser.setEnabled(False)
 
         self.home_thread = HomeWorker(self.mesa)
         self.home_thread.finished_signal.connect(self.on_home_finished)
@@ -1006,6 +1007,7 @@ class MainWindow(QMainWindow):
 
     def _on_connect_and_home_error(self, error):
         self.btn_home.setEnabled(True)
+        self.btn_laser.setEnabled(False)
         self.btn_home.setText("↑  Ir a Home")
         self._set_hw_status("disconnected", "Error de conexión")
         QMessageBox.critical(self, "Error de Conexión", f"Falló: {error}")
@@ -1027,6 +1029,7 @@ class MainWindow(QMainWindow):
     def on_home_error(self, error):
         self.btn_home.setEnabled(True)
         self.btn_home.setText("↑  Ir a Home")
+        self.btn_laser.setEnabled(False)
         self._set_hw_status("disconnected", "Error en home")
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
@@ -1049,6 +1052,7 @@ class MainWindow(QMainWindow):
         self.plotter_mag.inicializar_malla(x_max, y_max, self.res_actual)
 
         self.toggle_inputs(False)
+        self.btn_laser.setEnabled(False)
         self.worker = WorkerThread(self.mesa, x_max, y_max, self.res_actual, self.current_freq)
         self.worker.data_signal.connect(self.handle_new_data)
         self.worker.finished_signal.connect(self.measurement_finished)
@@ -1092,6 +1096,7 @@ class MainWindow(QMainWindow):
         y_max = self.slider_y.value() / 10.0
 
         self.toggle_inputs(False)
+        self.btn_laser.setEnabled(False)
         # Usamos los valores capturados de los QLineEdit
         self.worker_cruz = CruzWorkerThread(self.mesa, x_max, y_max, f_start, f_end, steps)
         self.worker_cruz.data_signal.connect(self.handle_new_cruz_data)
