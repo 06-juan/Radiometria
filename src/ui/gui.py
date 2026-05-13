@@ -3,10 +3,10 @@ import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit,
-    QComboBox, QStackedWidget, QSizePolicy, QStatusBar
+    QComboBox, QStackedWidget, QSizePolicy, QStatusBar, QGridLayout
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont, QColor,QDoubleValidator, QIntValidator
 
 from src.ui.plots.graficar_3d import Grafica3DRealTime
 from src.ui.plots.grafica_2d import Grafica2DRealTime
@@ -368,7 +368,7 @@ QStatusBar {
 
 
 # ─────────────────────────────────────────────
-#  HILOS (sin cambios de lógica)
+#  HILOS
 # ─────────────────────────────────────────────
 class HomeWorker(QThread):
     finished_signal = pyqtSignal()
@@ -520,9 +520,9 @@ class MainWindow(QMainWindow):
         logo_layout = QVBoxLayout(logo_frame)
         logo_layout.setContentsMargins(18, 16, 18, 14)
         logo_layout.setSpacing(2)
-        logo_layout.addWidget(make_label("SR830 · ARDUINO", "logo_tag"))
+        #logo_layout.addWidget(make_label("SR830 · ARDUINO", "logo_tag"))
         logo_layout.addWidget(make_label("Radiometría Fototérmica", "logo_title"))
-        logo_layout.addWidget(make_label("v2.1 · Control & Adquisición", "logo_sub"))
+        logo_layout.addWidget(make_label("SR830 · ARDUINO JuanGC", "logo_sub"))
         layout.addWidget(logo_frame)
 
         # Estado hardware
@@ -551,16 +551,51 @@ class MainWindow(QMainWindow):
         params_frame = QFrame()
         params_layout = QVBoxLayout(params_frame)
         params_layout.setContentsMargins(14, 0, 14, 6)
-        params_layout.setSpacing(2)
-
-        sec = make_label("PARÁMETROS DE BARRIDO", "section_label")
-        params_layout.addWidget(sec)
+        params_layout.setSpacing(1)
 
         self.slider_x,   self.input_x    = self._param_control(params_layout, "Eje X máx (mm)",    10, 100,  50, 10,   0)
         self.slider_y,   self.input_y    = self._param_control(params_layout, "Eje Y máx (mm)",    10, 100,  50, 10,   0)
         self.slider_res, self.input_res  = self._param_control(params_layout, "Resolución (mm)",    10, 1000, 1000, 1000, 3)
         self.slider_freq, self.input_freq = self._param_control(params_layout, "Frecuencia (Hz)",   1, 5000, 1000, 1,    0)
         layout.addWidget(params_frame)
+        params_layout.addSpacing(4)
+
+        freq_grid = QGridLayout()
+        freq_grid.setSpacing(6)
+        freq_grid.setContentsMargins(0, 0, 0, 4)
+
+        def _mini_input(label_text, default_val, is_int=False):
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(
+                "font-size: 8px; color: #5a6479; font-weight: bold; letter-spacing: 1px;"
+            )
+            edit = QLineEdit(str(default_val))
+            edit.setObjectName("param_value")
+            edit.setFixedHeight(24)
+            edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if is_int:
+                edit.setValidator(QIntValidator(1, 10000))
+            else:
+                v = QDoubleValidator(0.1, 100000.0, 2)
+                v.setNotation(QDoubleValidator.Notation.StandardNotation)
+                edit.setValidator(v)
+            return lbl, edit
+
+        lbl_s, self.input_f_start = _mini_input("F INICIO (Hz)", 100, is_int=True)
+        lbl_e, self.input_f_end   = _mini_input("F FINAL (Hz)",  5000, is_int=True)
+        lbl_p, self.input_f_pts   = _mini_input("PASOS",         100, is_int=True)
+
+        freq_grid.addWidget(lbl_s, 0, 0)
+        freq_grid.addWidget(lbl_e, 0, 1)
+        freq_grid.addWidget(lbl_p, 0, 2)
+        freq_grid.addWidget(self.input_f_start, 1, 0)
+        freq_grid.addWidget(self.input_f_end,   1, 1)
+        freq_grid.addWidget(self.input_f_pts,   1, 2)
+
+        params_layout.addLayout(freq_grid)
+
+        self.input_f_start.editingFinished.connect(self._validar_frecuencias)
+        self.input_f_end.editingFinished.connect(self._validar_frecuencias)
 
         layout.addWidget(h_separator())
 
@@ -781,7 +816,7 @@ class MainWindow(QMainWindow):
         slider.setValue(init_v)
         slider.setFixedHeight(22)
         layout.addWidget(slider)
-        layout.addSpacing(4)
+        layout.addSpacing(2)
 
         def slider_a_texto():
             line_edit.setText(f"{slider.value() / factor:.{decimales}f}")
@@ -858,8 +893,31 @@ class MainWindow(QMainWindow):
             self.findChild(QLabel, "mag_meta").setText(f"{self._npts} puntos")
 
     # ──────────────────────────────────────────
-    #  LÓGICA DE CONTROL (igual que antes)
+    #  LÓGICA DE CONTROL
     # ──────────────────────────────────────────
+    def _validar_frecuencias(self):
+        """Corrige automáticamente si f_final no es mayor a f_inicio + 10"""
+        try:
+            # Reemplazamos coma por punto por si acaso
+            t_start = self.input_f_start.text().replace(',', '.')
+            t_end   = self.input_f_end.text().replace(',', '.')
+            
+            if not t_start or not t_end: return
+
+            f_start = float(t_start)
+            f_end   = float(t_end)
+            
+            if f_end < (f_start + 10):
+                nueva_f = int(f_start) + 10
+                self.input_f_end.setText(str(nueva_f))
+                self._status_bar.showMessage(f"Rango ajustado: f_final debe ser > {f_start + 10} Hz", 2000)
+        except ValueError:
+            pass
+
+    # No olvides conectar los eventos en el init o build_sidebar:
+    # self.input_f_start.editingFinished.connect(self._validar_frecuencias)
+    # self.input_f_end.editingFinished.connect(self._validar_frecuencias)
+
     def ensure_home_then_do(self, task_function):
         if self.is_homed:
             task_function()
