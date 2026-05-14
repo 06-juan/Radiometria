@@ -2,6 +2,20 @@ import duckdb
 import numpy as np
 import matplotlib.pyplot as plt
 from fit_engine import PCRFitter
+import sys
+import time
+import threading
+
+def animar_spinner(evento_parar):
+    """Función para mostrar un spinner animado en la consola."""
+    spinner = ['/', '-', '\\', '|']
+    i = 0
+    while not evento_parar.is_set():
+        sys.stdout.write(f"\r🚀 Ajustando modelo... {spinner[i % len(spinner)]} ")
+        sys.stdout.flush()
+        time.sleep(0.1)
+        i += 1
+    sys.stdout.write("\r✅ Ajuste completado!          \n")
 
 def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
     """
@@ -66,8 +80,16 @@ def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
     fitter = PCRFitter(L=0.035, alpha=1.5e5, sigma_fase=2.0)
     semillas = {'tau': 1e-6, 'D': 3.0, 's1': 500.0, 's2': 5000.0, 'C_amp': 1.0}
     
-    print("🚀 Iniciando ajuste PCR...")
-    resultado = fitter.fit(f_exp, amp_norm, phase_true, semillas=semillas)
+   # Configurar el hilo del spinner
+    parar_spinner = threading.Event()
+    hilo_spinner = threading.Thread(target=animar_spinner, args=(parar_spinner,))
+
+    try:
+        hilo_spinner.start()
+        resultado = fitter.fit(f_exp.astype(float), amp_norm.astype(float), phase_true.astype(float), semillas=semillas)
+    finally:
+        parar_spinner.set()  # Detener la animación
+        hilo_spinner.join()  # Esperar a que el hilo termine
     
     # 5. GUARDAR DATOS PROCESADOS EN DUCKDB -> PARQUET
     amp_fit_eval = np.interp(f_exp, resultado.f_fit, resultado.amp_fit)
