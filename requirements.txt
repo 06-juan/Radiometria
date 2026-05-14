@@ -16,12 +16,10 @@ pyvisa==1.14.1
 
 # Renderizado 3D (Esencial para la fluidez que buscas)
 PyOpenGL==3.1.7
-#PyOpenGL-accelerate==3.1.7
 
 # Gestion datos
 duckdb==1.4.4
 
 matplotlib
 
-pyvista 
-pyvistaqt
+scipy
