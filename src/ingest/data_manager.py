@@ -28,7 +28,7 @@ class DataManager:
             ch_y DOUBLE,
             magnitude_r DOUBLE,
             phase_phi DOUBLE,
-            phase_normalizada DOUBLE,
+            phase_normalized DOUBLE,
             laser_freq DOUBLE
         );
         """
@@ -71,7 +71,7 @@ class DataManager:
         if path_calibracion and os.path.exists(path_calibracion):
             self.normalizar_fase(path_calibracion)
         else:
-            print("⚠️ No se proporcionó calibración. 'phase_normalizada' quedará en 0.0")
+            print("⚠️ No se proporcionó calibración. 'phase_normalized' quedará en 0.0")
 
         # 2. Exportamos a disco
         path = os.path.join(self.folder, f"{self.current_experiment_id}.parquet")
@@ -117,7 +117,7 @@ class DataManager:
 
             self.conn.execute("""
                 UPDATE buffer_activo 
-                SET phase_normalizada = temp_fase.fase_norm 
+                SET phase_normalized = temp_fase.fase_norm 
                 FROM temp_fase 
                 WHERE buffer_activo.rowid = temp_fase.id
             """)
