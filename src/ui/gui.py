@@ -505,7 +505,7 @@ class MainWindow(QMainWindow):
         self.mesa         = None
         self.worker       = None
         self.db           = DataManager()
-        self.db_viewer    = DataManager(folder="data")
+        self.db_viewer    = DataManager()
         self.current_freq = 0.0
         self.is_homed     = False
         self.pending_task = None
@@ -1253,7 +1253,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Visualizar", "Selecciona una medición.")
             return
 
-        path_parquet = os.path.join("data", f"{exp_id}.parquet")
+        path_parquet = os.path.join("data/raw", f"{exp_id}.parquet")
 
         if not os.path.exists(path_parquet):
             QMessageBox.critical(self, "Error", f"No se encontró el archivo: {path_parquet}")
@@ -1276,6 +1276,7 @@ class MainWindow(QMainWindow):
     def _cargar_vista_2d(self, exp_id):
         curves_data = self.db_viewer.cargar_medicion_2d(exp_id)
         if not curves_data:
+            print("nodata")
             return
         self._switch_tab(1)
         self.plot_mag_2d.limpiar()
