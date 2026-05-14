@@ -1112,15 +1112,42 @@ class MainWindow(QMainWindow):
         self._update_stats(r=data_dict.get('R'), phi=data_dict.get('phi'))
 
     def emergency_stop(self):
-        self.db.finalizar_experimento()
-        if self.worker and self.worker.isRunning():
-            self.mesa.stop_current_operation()
-            self.worker.wait()
+        """Detiene todo de forma segura y salva lo que se haya medido."""
+        print("🛑 Iniciando parada de emergencia...")
+        
+        # 1. Identificar qué worker está activo
+        active_worker = None
+        if hasattr(self, 'worker_cruz') and self.worker_cruz and self.worker_cruz.isRunning():
+            active_worker = self.worker_cruz
+        elif hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            active_worker = self.worker
+
+        # 2. Detener el hardware y el hilo ANTES de cerrar la DB
+        if active_worker:
+            print("Deteniendo hilo de medición...")
+            # Si tu worker tiene un método para detenerse suavemente, úsalo
+            if hasattr(self.mesa, 'stop_current_operation'):
+                self.mesa.stop_current_operation()
+            
+            active_worker.terminate() # Forzamos la parada del hilo
+            active_worker.wait()      # Esperamos a que el hilo muera realmente
+
+        # 3. Ahora que el hilo no enviará más datos, cerramos el experimento
+        # Usamos el path de calibración por defecto y avisamos que fue ABORTADO
+        self.db.finalizar_experimento(
+            path_calibracion="data/calibracion/calibracion.parquet", 
+            abortado=True
+        )
+
+        # 4. Limpieza de UI (Tu código original)
         if self.mesa:
-            self.mesa.close()
+            try:
+                self.mesa.close()
+            except:
+                pass
             self.mesa = None
 
-        self._set_hw_status("disconnected", "Desconectado")
+        self._set_hw_status("disconnected", "⚠️ Medición Abortada - Datos Salvados")
         self.btn_home.setText("↑  Ir a Home")
         self.btn_laser.setEnabled(False)
         self.btn_laser.setChecked(False)
@@ -1129,12 +1156,12 @@ class MainWindow(QMainWindow):
         self.btn_measure.setEnabled(False)
         self.btn_cruz.setEnabled(False)
         self.toggle_inputs(True)
-        self.is_homed     = False
-        self.pending_task = None
-        self.stat_x.setText("—")
-        self.stat_y.setText("—")
-        self.stat_r.setText("—")
-        self.stat_phi.setText("—")
+        self.is_homed = False
+        
+        # Actualizar la lista de mediciones para que aparezca el archivo _ABORTADO
+        self._refrescar_combo_mediciones()
+        
+        QMessageBox.warning(self, "Abortado", "La medición se detuvo. Los puntos capturados han sido guardados.")
 
     def measurement_finished(self):
         self.toggle_inputs(True)
