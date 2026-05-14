@@ -29,13 +29,18 @@ amp_norm = amp_exp / np.max(amp_exp)
 # 2. Corrección de Fase (Opcional pero recomendado)
 # El SR830 a veces entrega la fase "enroscada" o con un offset instrumental.
 # Si tu fase empieza en -170° y baja a -190°, np.unwrap ayudará.
+phase_exp = phase_exp - phase_exp[0]
 phase_exp = np.degrees(np.unwrap(np.radians(phase_exp)))
 
 # --- Ajuste ---
 fitter = PCRFitter(L=L_ESPESOR, alpha=ALPHA_INP_532, sigma_fase=SIGMA_FASE)
 
 semillas = {
-    'tau': 2e-6, 'D': 4.5, 's1': 500.0, 's2': 5000.0, 'C_amp': 1.0
+    'tau': 1e-5,      # 10 microsegundos (semilla conservadora)
+    'D': 2.5,         # InP suele tener D bajo
+    's1': 500.0,
+    's2': 5000.0,
+    'C_amp': 1.0      # amp_norm ya está en escala 1
 }
 
 resultado = fitter.fit(f_exp, amp_norm, phase_exp, semillas=semillas)
