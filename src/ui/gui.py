@@ -1136,7 +1136,6 @@ class MainWindow(QMainWindow):
         # Usamos el path de calibración por defecto y avisamos que fue ABORTADO
         self.db.finalizar_experimento(
             path_calibracion="data/calibracion/calibracion.parquet", 
-            abortado=True
         )
 
         # 4. Limpieza de UI (Tu código original)

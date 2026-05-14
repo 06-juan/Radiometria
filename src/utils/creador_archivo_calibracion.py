@@ -10,7 +10,7 @@ import duckdb
 con = duckdb.connect()
 
 # Rutas de archivos
-parquet_input = "./data/raw/FREQ_20260513_0843.parquet"
+parquet_input = "./data/raw/FREQ_20260514_1258.parquet"
 parquet_output = "./data/calibracion/calibracion.parquet"
 
 # Consulta SQL:
