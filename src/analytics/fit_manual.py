@@ -3,63 +3,107 @@ import numpy as np
 import matplotlib.pyplot as plt
 from fit_engine import PCRFitter
 
-# --- Configuración ---
-L_ESPESOR = 0.035       # cm
-ALPHA_INP_532 = 1.5e5   # cm^-1
-SIGMA_FASE = 2.0        
-PATH = "/home/randiola/Documentos/Radiometria/data/FREQ_20260513_0843.parquet"
+def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
+    """
+    Carga los datos. Si la fase ya está normalizada, la lee directamente.
+    Si no, usa el archivo de calibración para corregirla.
+    Luego ajusta el modelo y guarda los datos procesados.
+    """
+    con = duckdb.connect()
 
-# Usamos fetchnumpy() para evitar crear un DataFrame de Pandas en memoria
-con = duckdb.connect()
-res = con.execute(f"""
-    SELECT laser_freq, magnitude_r, phase_phi 
-    FROM read_parquet('{PATH}')
-    WHERE x_pos = 0.0 AND y_pos = 0.0
-    ORDER BY laser_freq ASC
-""").fetchnumpy()
+    # 1. INSPECCIONAR EL ESQUEMA DEL ARCHIVO (Identificar si ya tiene la columna)
+    # DESCRIBE nos devuelve los metadatos del archivo sin cargar todos los gigas/megas
+    columnas_info = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path_muestra}')").fetchall()
+    nombres_columnas = [col[0] for col in columnas_info]
 
-f_exp = res['laser_freq'].astype(float)
-amp_exp = res['magnitude_r'].astype(float)
-phase_exp = res['phase_phi'].astype(float)
+    # 2. CARGA Y PRE-PROCESAMIENTO DINÁMICO
+    if 'phase_normalizada' in nombres_columnas:
+        print("✅ Columna 'phase_normalizada' detectada. Omitiendo calibración manual...")
+        mu_data = con.execute(f"""
+            SELECT laser_freq, magnitude_r, phase_normalizada
+            FROM read_parquet('{path_muestra}')
+            WHERE x_pos = 0.0 AND y_pos = 0.0
+            ORDER BY laser_freq ASC
+        """).fetchnumpy()
+        
+        f_exp = mu_data['laser_freq'].astype(float)
+        amp_exp = mu_data['magnitude_r'].astype(float)
+        phase_true = mu_data['phase_normalizada'].astype(float)
+        
+    else:
+        print("⚠️ Columna 'phase_normalizada' NO detectada. Aplicando calibración al vuelo...")
+        
+        # Cargar muestra cruda
+        mu_data = con.execute(f"""
+            SELECT laser_freq, magnitude_r, phase_phi 
+            FROM read_parquet('{path_muestra}')
+            WHERE x_pos = 0.0 AND y_pos = 0.0
+            ORDER BY laser_freq ASC
+        """).fetchnumpy()
+        
+        f_exp = mu_data['laser_freq'].astype(float)
+        amp_exp = mu_data['magnitude_r'].astype(float)
+        phi_exp = mu_data['phase_phi'].astype(float)
 
-# --- Pre-procesamiento Crítico ---
-# 1. Normalización de amplitud (ayuda a la convergencia del ajuste)
-amp_norm = amp_exp / np.max(amp_exp)
+        # Cargar calibración (Acero)
+        cal_data = con.execute(f"""
+            SELECT laser_freq, phase_phi 
+            FROM read_parquet('{path_calibracion}') 
+            ORDER BY laser_freq ASC
+        """).fetchnumpy()
+        
+        f_cal = cal_data['laser_freq'].astype(float)
+        phi_cal = cal_data['phase_phi'].astype(float)
 
-# 2. Corrección de Fase (Opcional pero recomendado)
-# El SR830 a veces entrega la fase "enroscada" o con un offset instrumental.
-# Si tu fase empieza en -170° y baja a -190°, np.unwrap ayudará.
-phase_exp = phase_exp - phase_exp[0]
-phase_exp = np.degrees(np.unwrap(np.radians(phase_exp)))
+        # Interpolación y resta
+        phi_cal_interpolada = np.interp(f_exp, f_cal, phi_cal)
+        phase_true = phi_exp - phi_cal_interpolada
 
-# --- Ajuste ---
-fitter = PCRFitter(L=L_ESPESOR, alpha=ALPHA_INP_532, sigma_fase=SIGMA_FASE)
+    # 3. Normalizamos amplitud (Siempre se hace)
+    amp_norm = amp_exp / np.max(amp_exp)
 
-semillas = {
-    'tau': 1e-5,      # 10 microsegundos (semilla conservadora)
-    'D': 2.5,         # InP suele tener D bajo
-    's1': 500.0,
-    's2': 5000.0,
-    'C_amp': 1.0      # amp_norm ya está en escala 1
-}
-
-resultado = fitter.fit(f_exp, amp_norm, phase_exp, semillas=semillas)
-
-# --- Visualización de Resultados ---
-if resultado.success:
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    # 4. EJECUTAR EL AJUSTE PCR
+    fitter = PCRFitter(L=0.035, alpha=1.5e5, sigma_fase=2.0)
+    semillas = {'tau': 1e-6, 'D': 3.0, 's1': 500.0, 's2': 5000.0, 'C_amp': 1.0}
     
-    # Amplitud
-    ax1.loglog(f_exp, amp_norm, 'ok', label='Datos InP', markersize=4)
-    ax1.loglog(resultado.f_fit, resultado.amp_fit, 'r-', label='Ajuste Mandelis')
-    ax1.set_ylabel("Amplitud Normalizada (u.a.)")
-    ax1.legend()
+    print("🚀 Iniciando ajuste PCR...")
+    resultado = fitter.fit(f_exp, amp_norm, phase_true, semillas=semillas)
     
-    # Fase
-    ax2.semilogx(f_exp, phase_exp, 'ok', markersize=4)
-    ax2.semilogx(resultado.f_fit, resultado.phase_fit, 'r-')
-    ax2.set_ylabel("Fase (grados)")
-    ax2.set_xlabel("Frecuencia (Hz)")
+    # 5. GUARDAR DATOS PROCESADOS EN DUCKDB -> PARQUET
+    amp_fit_eval = np.interp(f_exp, resultado.f_fit, resultado.amp_fit)
+    phase_fit_eval = np.interp(f_exp, resultado.f_fit, resultado.phase_fit)
+
+    con.execute("""
+        CREATE TABLE datos_procesados AS 
+        SELECT 
+            unnest(?::DOUBLE[]) AS freq_hz,
+            unnest(?::DOUBLE[]) AS amp_norm_exp,
+            unnest(?::DOUBLE[]) AS phase_verdadera_deg,
+            unnest(?::DOUBLE[]) AS amp_modelo,
+            unnest(?::DOUBLE[]) AS phase_modelo
+    """, [f_exp, amp_norm, phase_true, amp_fit_eval, phase_fit_eval])
     
-    plt.suptitle(f"Ajuste PCR - InP (tau={resultado.tau*1e6:.2f} us)")
-    plt.show()
+    con.execute(f"COPY datos_procesados TO '{path_salida}' (FORMAT PARQUET)")
+    print(f"💾 Datos procesados y ajuste guardados en: {path_salida}")
+
+    # 6. VISUALIZACIÓN RÁPIDA
+    if resultado.success:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+        ax1.loglog(f_exp, amp_norm, 'ok', label='InP (Medido)')
+        ax1.loglog(resultado.f_fit, resultado.amp_fit, 'r-', label='Mandelis Fit')
+        ax1.set_ylabel("Amplitud Normalizada")
+        ax1.legend()
+        
+        ax2.semilogx(f_exp, phase_true, 'ok')
+        ax2.semilogx(resultado.f_fit, resultado.phase_fit, 'r-')
+        ax2.set_ylabel("Fase Calibrada (°)")
+        ax2.set_xlabel("Frecuencia (Hz)")
+        plt.show()
+
+# --- USO ---
+if __name__ == "__main__":
+    calibrar_y_guardar(
+        path_muestra="data/raw/FREQ_20260513_0843.parquet",
+        path_calibracion="data/calibracion/calibracion.parquet",
+        path_salida="data/procesados/PROCESADO_InP_0843.parquet"
+    )

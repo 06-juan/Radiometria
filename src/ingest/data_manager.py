@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 class DataManager:
-    def __init__(self, folder="data"):
+    def __init__(self, folder="data/raw"):
         self.folder = folder
         if not os.path.exists(self.folder):
             os.makedirs(self.folder)
@@ -28,6 +28,7 @@ class DataManager:
             ch_y DOUBLE,
             magnitude_r DOUBLE,
             phase_phi DOUBLE,
+            phase_normalizada DOUBLE,
             laser_freq DOUBLE
         );
         """
@@ -47,7 +48,7 @@ class DataManager:
         if not self.current_experiment_id:
             return
 
-        query = "INSERT INTO buffer_activo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        query = "INSERT INTO buffer_activo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         params = (
             self.current_experiment_id,
             datetime.now(),
@@ -56,22 +57,76 @@ class DataManager:
             float(lockin_data.get('Y', 0.0)),
             float(lockin_data.get('R', 0.0)),
             float(lockin_data.get('phi', 0.0)),
+            0.0,
             float(freq)
         )
         self.conn.execute(query, params)
 
-    def finalizar_experimento(self):
+    def finalizar_experimento(self, path_calibracion="data/calibracion/calibracion.parquet"):
         """Vuelca los datos de RAM a un archivo Parquet individual."""
         if not self.current_experiment_id:
             return
             
+        # 1. Si pasamos un archivo de calibración, normalizamos la fase primero
+        if path_calibracion and os.path.exists(path_calibracion):
+            self.normalizar_fase(path_calibracion)
+        else:
+            print("⚠️ No se proporcionó calibración. 'phase_normalizada' quedará en 0.0")
+
+        # 2. Exportamos a disco
         path = os.path.join(self.folder, f"{self.current_experiment_id}.parquet")
         try:
             self.conn.execute(f"COPY buffer_activo TO '{path}' (FORMAT PARQUET)")
             self.conn.execute("DELETE FROM buffer_activo")
-            print(f"✅ Guardado en: {path}")
+            print(f"✅ Guardado con éxito en: {path}")
         except Exception as e:
             print(f"Error al persistir Parquet: {e}")
+
+    def normalizar_fase(self, path_calibracion):
+        """Calcula la fase verdadera interpolada y actualiza el buffer en RAM."""
+        print("Normalizando fase con archivo de calibración...")
+        
+        try:
+            # 1. Cargar datos de calibración (desde el parquet guardado del Acero)
+            cal_data = duckdb.execute(f"""
+                SELECT laser_freq, phase_phi 
+                FROM read_parquet('{path_calibracion}') 
+                ORDER BY laser_freq ASC
+            """).fetchnumpy()
+            f_cal = cal_data['laser_freq']
+            phi_cal = cal_data['phase_phi']
+
+            # 2. Extraer datos actuales de la RAM (usamos rowid para saber qué fila actualizar)
+            exp_data = self.conn.execute("""
+                SELECT rowid, laser_freq, phase_phi 
+                FROM buffer_activo
+            """).fetchnumpy()
+            rowids = exp_data['rowid']
+            f_exp = exp_data['laser_freq']
+            phi_exp = exp_data['phase_phi']
+
+            # 3. Matemática: Interpolación y resta
+            phi_cal_interpolada = np.interp(f_exp, f_cal, phi_cal)
+            phase_true = phi_exp - phi_cal_interpolada
+
+            # 4. Actualizar la tabla en RAM vía una tabla temporal rápida
+            self.conn.execute("""
+                CREATE TEMP TABLE temp_fase AS 
+                SELECT unnest(?::BIGINT[]) AS id, unnest(?::DOUBLE[]) AS fase_norm
+            """, [rowids, phase_true])
+
+            self.conn.execute("""
+                UPDATE buffer_activo 
+                SET phase_normalizada = temp_fase.fase_norm 
+                FROM temp_fase 
+                WHERE buffer_activo.rowid = temp_fase.id
+            """)
+
+            self.conn.execute("DROP TABLE temp_fase")
+            print("✅ Fase normalizada inyectada correctamente en el buffer.")
+            
+        except Exception as e:
+            print(f"Error durante la normalización de fase: {e}")
 
     def listar_mediciones(self):
         """Busca en todos los archivos .parquet de la carpeta."""
