@@ -1107,6 +1107,7 @@ class MainWindow(QMainWindow):
         self.plot_quad_2d.limpiar()
 
         exp_id = self.db.iniciar_nuevo_experimento(tipo="FREQ")
+        self.db.cargar_referencia_calibracion("data\calibracion\calibracion.parquet")
 
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
@@ -1136,8 +1137,8 @@ class MainWindow(QMainWindow):
             self.plot_mag_2d.actualizar(f, r_raw, curve_idx=idx)
         
         # Graficamos phi_n (Fase Normalizada)
-        if phi_n is None:
-            phi_n = data_dict.get('phi')
+        #if phi_n is None:
+            #phi_n = data_dict.get('phi')
 
         if phi_n is not None: 
             self.plot_fase_2d.actualizar(f, phi_n, curve_idx=idx)
@@ -1171,10 +1172,7 @@ class MainWindow(QMainWindow):
             active_worker.wait()      # Esperamos a que el hilo muera realmente
 
         # 3. Ahora que el hilo no enviará más datos, cerramos el experimento
-        # Usamos el path de calibración por defecto y avisamos que fue ABORTADO
-        self.db.finalizar_experimento(
-            path_calibracion="data/calibracion/calibracion.parquet", 
-        )
+        self.db.finalizar_experimento()
 
         # 4. Limpieza de UI (Tu código original)
         if self.mesa:
@@ -1314,7 +1312,6 @@ class MainWindow(QMainWindow):
     def _cargar_vista_2d(self, exp_id):
         curves_data = self.db_viewer.cargar_medicion_2d(exp_id)
         if not curves_data:
-            print("nodata")
             return
         self._switch_tab(1)
         self.plot_mag_2d.limpiar()
@@ -1322,8 +1319,8 @@ class MainWindow(QMainWindow):
         self.plot_quad_2d.limpiar()
 
         for i, (_, data) in enumerate(curves_data.items()):
-            self.plot_mag_2d.set_datos_completos(data["freq"], data["mag"],  curve_idx=i)
-            self.plot_fase_2d.set_datos_completos(data["freq"], data["phi"],  curve_idx=i)
+            self.plot_mag_2d.set_datos_completos(data["freq"], data["mag_n"],  curve_idx=i)
+            self.plot_fase_2d.set_datos_completos(data["freq"], data["phi_n"],  curve_idx=i)
             self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=i)
 
         QMessageBox.information(self, "Espectro cargado",

@@ -49,13 +49,12 @@ class DataManager:
         try:
             # Cargamos los datos de referencia (ej. del acero)
             cal_data = duckdb.execute(f"""
-                SELECT laser_freq, magnitude_r, phase_phi 
+                SELECT laser_freq, phase_phi 
                 FROM read_parquet('{path_calibracion}') 
                 ORDER BY laser_freq ASC
             """).fetchnumpy()
             
             self.cal_freqs = cal_data['laser_freq']
-            self.cal_mags = cal_data['magnitude_r']
             self.cal_phases = cal_data['phase_phi']
             print("✅ Calibración cargada en memoria para tiempo real.")
             return True
@@ -89,6 +88,8 @@ class DataManager:
         # Magnitud: Normalizamos al final
         mag_norm = 0.0
         
+        print(self.cal_freqs)
+
         # Fase: respecto a la calibración (si existe)
         phi_norm = 0.0
         if self.cal_freqs is not None:
@@ -271,10 +272,10 @@ class DataManager:
             for r in rows:
                 idx = float(r[0])
                 if idx not in curves:
-                    curves[idx] = {"freq": [], "mag": [], "phi": [], "quad": []}
+                    curves[idx] = {"freq": [], "mag_n": [], "phi_n": [], "quad": []}
                 curves[idx]["freq"].append(r[1])
-                curves[idx]["mag"].append(r[2])
-                curves[idx]["phi"].append(r[3])
+                curves[idx]["mag_n"].append(r[2])
+                curves[idx]["phi_n"].append(r[3])
                 curves[idx]["quad"].append(r[4])
 
             for k in curves:

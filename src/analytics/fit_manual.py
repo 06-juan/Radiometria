@@ -122,7 +122,7 @@ def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
 
 if __name__ == "__main__":
     calibrar_y_guardar(
-        path_muestra="data/raw/FREQ_20260513_0843.parquet",
+        path_muestra="data/raw/FREQ_20260515_1738.parquet",
         path_calibracion="data/calibracion/calibracion.parquet",
         path_salida="data/procesados/PROCESADO_InP_0843.parquet"
     )
