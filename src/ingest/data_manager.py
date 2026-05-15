@@ -9,15 +9,20 @@ class DataManager:
         self.folder = folder
         if not os.path.exists(self.folder):
             os.makedirs(self.folder)
-            print(f"Carpeta '{self.folder}' creada.")
             
-        # Conexión principal EN MEMORIA para máxima velocidad de captura
         self.conn = duckdb.connect(database=':memory:')
         self.current_experiment_id = None
+        
+        # --- ATRIBUTOS PARA TIEMPO REAL DATOS CALCULADOS ---
+        self.cal_freqs = None
+        self.cal_mags = None
+        self.cal_phases = None
+        self.max_mag_actual = 0.0
+        
         self._inicializar_buffer()
 
     def _inicializar_buffer(self):
-        """Crea la tabla temporal en RAM."""
+        """Crea la tabla temporal en RAM con columnas para datos normalizados."""
         query = """
         CREATE TABLE IF NOT EXISTS buffer_activo (
             experiment_id VARCHAR,
@@ -27,6 +32,7 @@ class DataManager:
             ch_x DOUBLE,
             ch_y DOUBLE,
             magnitude_r DOUBLE,
+            magnitude_normalized DOUBLE,
             phase_phi DOUBLE,
             phase_normalized DOUBLE,
             laser_freq DOUBLE
@@ -34,53 +40,103 @@ class DataManager:
         """
         self.conn.execute(query)
 
+    def cargar_referencia_calibracion(self, path_calibracion):
+        """Carga la calibración en memoria para cálculos instantáneos."""
+        if not os.path.exists(path_calibracion):
+            print(f"⚠️ Archivo de calibración no encontrado en {path_calibracion}")
+            return False
+        
+        try:
+            # Cargamos los datos de referencia (ej. del acero)
+            cal_data = duckdb.execute(f"""
+                SELECT laser_freq, magnitude_r, phase_phi 
+                FROM read_parquet('{path_calibracion}') 
+                ORDER BY laser_freq ASC
+            """).fetchnumpy()
+            
+            self.cal_freqs = cal_data['laser_freq']
+            self.cal_mags = cal_data['magnitude_r']
+            self.cal_phases = cal_data['phase_phi']
+            print("✅ Calibración cargada en memoria para tiempo real.")
+            return True
+        except Exception as e:
+            print(f"❌ Error cargando calibración: {e}")
+            return False
+
     def iniciar_nuevo_experimento(self, tipo="XY"):
-        """Genera ID corto: XY_20240520_1430"""
+        """Reinicia el ID y el contador de magnitud máxima."""
         now = datetime.now()
         timestamp = now.strftime('%Y%m%d_%H%M')
         self.current_experiment_id = f"{tipo.upper()}_{timestamp}"
-        # Limpiar buffer por si acaso
+        
+        #Reiniciar el máximo para el nuevo experimento
+        self.max_mag_actual = 1e-12 # Evitar división por cero inicial
+        
         self.conn.execute("DELETE FROM buffer_activo")
         return self.current_experiment_id
 
     def guardar_punto(self, x, y, lockin_data, freq):
-        """Inserta en RAM (Ultra rápido)."""
+        """Calcula normalización respecto al máximo actual e inserta en RAM."""
         if not self.current_experiment_id:
             return
 
-        query = "INSERT INTO buffer_activo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        # 1. Obtener valores crudos
+        r_raw = float(lockin_data.get('R', 0.0))
+        phi_raw = float(lockin_data.get('phi', 0.0))
+        freq_val = float(freq)
+
+        # 3. CÁLCULO DE NORMALIZACIÓN EN TIEMPO REAL
+        # Magnitud: Normalizamos al final
+        mag_norm = 0.0
+        
+        # Fase: respecto a la calibración (si existe)
+        phi_norm = 0.0
+        if self.cal_freqs is not None:
+            phi_ref = np.interp(freq_val, self.cal_freqs, self.cal_phases)
+            phi_norm = phi_raw - phi_ref
+        else:
+            phi_norm = phi_raw
+
+        # 4. Insertar en la tabla de DuckDB
+        query = "INSERT INTO buffer_activo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         params = (
             self.current_experiment_id,
             datetime.now(),
             float(x), float(y),
             float(lockin_data.get('X', 0.0)),
             float(lockin_data.get('Y', 0.0)),
-            float(lockin_data.get('R', 0.0)),
-            float(lockin_data.get('phi', 0.0)),
-            0.0,
-            float(freq)
+            r_raw,
+            mag_norm,
+            phi_raw,
+            phi_norm,
+            freq_val
         )
         self.conn.execute(query, params)
+        
+        return r_raw, phi_norm
 
-    def finalizar_experimento(self, path_calibracion="data/calibracion/calibracion.parquet"):
-        """Vuelca los datos de RAM a un archivo Parquet individual."""
+    def finalizar_experimento(self):
+        """Simplemente guarda lo que ya está calculado en el buffer."""
         if not self.current_experiment_id:
             return
             
-        # 1. Si pasamos un archivo de calibración, normalizamos la fase primero
-        if path_calibracion and os.path.exists(path_calibracion):
-            self.normalizar_fase(path_calibracion)
-        else:
-            print("⚠️ No se proporcionó calibración. 'phase_normalized' quedará en 0.0")
-
-        # 2. Exportamos a disco
-        path = os.path.join(self.folder, f"{self.current_experiment_id}.parquet")
         try:
+            # Usamos una subconsulta para obtener el máximo global
+            print("Calculando normalización final...")
+            self.conn.execute("""
+                UPDATE buffer_activo 
+                SET magnitude_normalized = magnitude_r / (SELECT MAX(magnitude_r) FROM buffer_activo)
+            """)
+            
+            # Exportar a disco
+            path = os.path.join(self.folder, f"{self.current_experiment_id}.parquet")
             self.conn.execute(f"COPY buffer_activo TO '{path}' (FORMAT PARQUET)")
             self.conn.execute("DELETE FROM buffer_activo")
-            print(f"✅ Guardado con éxito en: {path}")
+            self.max_mag_actual = 0.0 # Reset para el próximo
+            print(f"✅ Guardado con normalización global en: {path}")
+            
         except Exception as e:
-            print(f"Error al persistir Parquet: {e}")
+            print(f"❌ Error al finalizar: {e}")
 
     def normalizar_fase(self, path_calibracion):
         """Calcula la fase verdadera interpolada y actualiza el buffer en RAM."""
@@ -150,51 +206,57 @@ class DataManager:
     def cargar_medicion(self, experiment_id):
         """Carga datos desde el archivo Parquet específico para visualización 3D."""
         path = os.path.join(self.folder, f"{experiment_id}.parquet")
-        if not os.path.exists(path): return None
-
-        try:
-            query = f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC"
-            rows = self.conn.execute(query).fetchall()
-            
-            if not rows: return None
-
-            x_vals = np.array([r[0] for r in rows])
-            y_vals = np.array([r[1] for r in rows])
-            r_vals = np.array([r[2] for r in rows])
-            phi_vals = np.array([r[3] for r in rows])
-            freq_vals = np.array([r[4] for r in rows])
-
-            x_unique = np.unique(x_vals)
-            y_unique = np.unique(y_vals)
-
-            dx = float(np.diff(x_unique).min()) if len(x_unique) > 1 else 0.001
-            dy = float(np.diff(y_unique).min()) if len(y_unique) > 1 else 0.001
-            res = min(dx, dy)
-            
-            x_max, y_max = float(x_vals.max()), float(y_vals.max())
-            nx, ny = int(x_max / res) + 1, int(y_max / res) + 1
-
-            laser_freq = freq_vals[0]
-
-            z_mag = np.zeros((ny, nx))
-            z_fase = np.zeros((ny, nx))
-            
-            for x, y, r, phi in zip(x_vals, y_vals, r_vals, phi_vals):
-                ix = int(np.clip(round(x / res), 0, nx - 1))
-                iy = int(np.clip(round(y / res), 0, ny - 1))
-                z_mag[iy, ix] = r
-                z_fase[iy, ix] = phi
-
-            print(f'"x_max": {x_max}, "y_max": {y_max}, "res": {res}, "freq": {laser_freq}')
-
-            return {
-                "x_max": x_max, "y_max": y_max, "res": res,
-                "xs": np.linspace(0, x_max, nx), "ys": np.linspace(0, y_max, ny),
-                "z_mag": z_mag, "z_fase": z_fase,
-            }
-        except Exception as e:
-            print(f"Error cargando {experiment_id}: {e}")
+        if not os.path.exists(path): 
             return None
+
+        # Intentamos primero con las columnas nuevas
+        intentos_query = [
+            f"SELECT x_pos, y_pos, magnitude_normalized, phase_normalized, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC",
+            f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC"
+        ]
+
+        rows = None
+        for query in intentos_query:
+            try:
+                rows = self.conn.execute(query).fetchall()
+                break # Si funciona, salimos del bucle
+            except Exception:
+                continue # Si falla (columna no existe), probamos la siguiente
+
+        if not rows: 
+            print(f"⚠️ No se pudieron extraer datos de {experiment_id}")
+            return None
+
+        x_vals = np.array([r[0] for r in rows])
+        y_vals = np.array([r[1] for r in rows])
+        r_vals = np.array([r[2] for r in rows])
+        phi_vals = np.array([r[3] for r in rows])
+        freq_vals = np.array([r[4] for r in rows])
+
+        x_unique = np.unique(x_vals)
+        y_unique = np.unique(y_vals)
+
+        dx = float(np.diff(x_unique).min()) if len(x_unique) > 1 else 0.001
+        dy = float(np.diff(y_unique).min()) if len(y_unique) > 1 else 0.001
+        res = min(dx, dy)
+        
+        x_max, y_max = float(x_vals.max()), float(y_vals.max())
+        nx, ny = int(x_max / res) + 1, int(y_max / res) + 1
+        laser_freq = freq_vals[0]
+        z_mag = np.zeros((ny, nx))
+        z_fase = np.zeros((ny, nx))
+        
+        for x, y, r, phi in zip(x_vals, y_vals, r_vals, phi_vals):
+            ix = int(np.clip(round(x / res), 0, nx - 1))
+            iy = int(np.clip(round(y / res), 0, ny - 1))
+            z_mag[iy, ix] = r
+            z_fase[iy, ix] = phi
+        print(f'"x_max": {x_max}, "y_max": {y_max}, "res": {res}, "freq": {laser_freq}')
+        return {
+            "x_max": x_max, "y_max": y_max, "res": res,
+            "xs": np.linspace(0, x_max, nx), "ys": np.linspace(0, y_max, ny),
+            "z_mag": z_mag, "z_fase": z_fase,
+        }
 
     def cargar_medicion_2d(self, experiment_id):
         """Carga datos desde el Parquet para curvas 2D."""
@@ -202,7 +264,7 @@ class DataManager:
         if not os.path.exists(path): return None
 
         try:
-            query = f"SELECT x_pos, laser_freq, magnitude_r, phase_phi, ch_y FROM '{path}' ORDER BY x_pos ASC, laser_freq ASC"
+            query = f"SELECT x_pos, laser_freq, magnitude_normalized, phase_normalized, ch_y FROM '{path}' ORDER BY x_pos ASC, laser_freq ASC"
             rows = self.conn.execute(query).fetchall()
             
             curves = {}

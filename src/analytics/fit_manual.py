@@ -72,7 +72,7 @@ def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
     
     f_exp = mu_data['laser_freq'].astype(float)
     amp_norm = mu_data['magnitude_normalized'].astype(float)
-    phase_true = mu_data['phase_normalizada'].astype(float)
+    phase_true = mu_data['phase_normalized'].astype(float)
 
     # 4. EJECUTAR EL AJUSTE PCR
     fitter = PCRFitter(L=0.035, alpha=1.5e5, sigma_fase=2.0)

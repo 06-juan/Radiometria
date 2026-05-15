@@ -1060,12 +1060,25 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def handle_new_data(self, x, y, data_dict):
-        r   = data_dict.get('R')
-        phi = data_dict.get('phi')
-        if r   is not None: self.plotter_mag.actualizar_punto(x, y, r)
-        if phi is not None: self.plotter_fase.actualizar_punto(x, y, phi)
-        self.db.guardar_punto(x, y, data_dict, self.current_freq)
-        self._update_stats(x=x, y=y, r=r, phi=phi)
+        """Para 3D Guardamos Data Procesa Data (Normaliza phi) y Grafica Data"""
+        # 1. Primero enviamos los datos a la DB para que realice los cálculos.
+        # guardar_punto devuelve: (mag_normalizada, fase_normalizada)
+        mag_n, phi_n = self.db.guardar_punto(x, y, data_dict, self.current_freq)
+        
+        # 2. Extraemos la magnitud cruda (R) directamente del diccionario
+        r_raw = data_dict.get('R')
+
+        # 3. Actualizamos los plotters:
+        # Graficamos la Magnitud CRUDA (R)
+        if r_raw is not None: 
+            self.plotter_mag.actualizar_punto(x, y, r_raw)
+        
+        # Graficamos la Fase NORMALIZADA (la que devolvió la DB)
+        if phi_n is not None: 
+            self.plotter_fase.actualizar_punto(x, y, phi_n)
+        
+        # 4. Actualizamos estadísticas con los valores que prefieras (usaremos r crudo y phi normalizada)
+        self._update_stats(x=x, y=y, r=r_raw, phi=phi_n)
 
     def start_measurement_cruz(self):
         if not self.mesa:
@@ -1105,11 +1118,30 @@ class MainWindow(QMainWindow):
         self.worker_cruz.start()
 
     def handle_new_cruz_data(self, idx, f, data_dict):
-        if 'R'   in data_dict: self.plot_mag_2d.actualizar(f, data_dict['R'],   curve_idx=idx)
-        if 'phi' in data_dict: self.plot_fase_2d.actualizar(f, data_dict['phi'], curve_idx=idx)
-        if 'Y'   in data_dict: self.plot_quad_2d.actualizar(f, data_dict['Y'],   curve_idx=idx)
-        self.db.guardar_punto(float(idx), 0.0, data_dict, f)
-        self._update_stats(r=data_dict.get('R'), phi=data_dict.get('phi'))
+        """Para 2D Guardamos Data Procesa Data (Normaliza phi) y Grafica Data"""
+        # 1. Procesar en la DB primero para obtener cálculos de tiempo real
+        # Enviamos float(idx) como X y 0.0 como Y según tu estructura
+        mag_n, phi_n = self.db.guardar_punto(float(idx), 0.0, data_dict, f)
+        
+        # 2. Extraer valores para graficar
+        r_raw = data_dict.get('R')
+        y_quad = data_dict.get('Y')
+
+        # 3. Actualizar Gráficos 2D
+        # Graficamos R (Magnitud Cruda)
+        if r_raw is not None: 
+            self.plot_mag_2d.actualizar(f, r_raw, curve_idx=idx)
+        
+        # Graficamos phi_n (Fase Normalizada)
+        if phi_n is not None: 
+            self.plot_fase_2d.actualizar(f, phi_n, curve_idx=idx)
+        
+        # Graficamos Cuadratura (Y) normal
+        if y_quad is not None: 
+            self.plot_quad_2d.actualizar(f, y_quad, curve_idx=idx)
+
+        # 4. Estadísticas (usando r crudo y fase normalizada para ser consistentes)
+        self._update_stats(r=r_raw, phi=phi_n)
 
     def emergency_stop(self):
         """Detiene todo de forma segura y salva lo que se haya medido."""
