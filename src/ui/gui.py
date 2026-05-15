@@ -1074,6 +1074,9 @@ class MainWindow(QMainWindow):
             self.plotter_mag.actualizar_punto(x, y, r_raw)
         
         # Graficamos la Fase NORMALIZADA (la que devolvió la DB)
+        if phi_n is None:
+            phi_n = data_dict.get('phi')
+
         if phi_n is not None: 
             self.plotter_fase.actualizar_punto(x, y, phi_n)
         
@@ -1133,6 +1136,9 @@ class MainWindow(QMainWindow):
             self.plot_mag_2d.actualizar(f, r_raw, curve_idx=idx)
         
         # Graficamos phi_n (Fase Normalizada)
+        if phi_n is None:
+            phi_n = data_dict.get('phi')
+
         if phi_n is not None: 
             self.plot_fase_2d.actualizar(f, phi_n, curve_idx=idx)
         
