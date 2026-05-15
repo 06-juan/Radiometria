@@ -87,8 +87,6 @@ class DataManager:
         # 3. CÁLCULO DE NORMALIZACIÓN EN TIEMPO REAL
         # Magnitud: Normalizamos al final
         mag_norm = 0.0
-        
-        print(self.cal_freqs)
 
         # Fase: respecto a la calibración (si existe)
         phi_norm = 0.0
