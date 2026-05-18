@@ -117,15 +117,18 @@ class PCRFitter:
     # ── Función de residuales ──────────────────────────────────────────────
 
     def _residuals(self, params, f_exp, amp_exp, phase_exp):
-        """
-        Vector de residuales normalizados para scipy.optimize.least_squares.
+        tau_scaled, D_scaled, s1_scaled, C_amp_scaled, floor_scaled = params
+    
+        # Desescalado protegido hacia magnitudes físicas reales
+        tau = tau_scaled * 1e-5    
+        D = D_scaled * 10.0        
+        s1 = s1_scaled * 1000.0    
+        C_amp = C_amp_scaled * self.C_base
+        V_floor = floor_scaled * 1e-3  # El piso de ruido suele ser una constante pequeña
+        
+        s2 = 1e7  # Recombinación trasera alta fija para la oblea
 
-        params = [tau, D, s1, s2, C_amp]
-        """
-        tau, D, s1, s2, C_amp = params
-
-        # Evitar parámetros no físicos durante la iteración
-        if tau <= 0 or D <= 0 or s1 < 0 or s2 < 0 or C_amp <= 0:
+        if tau <= 0 or D <= 0 or s1 < 0 or C_amp <= 0 or V_floor < 0:
             return np.ones(2 * len(f_exp)) * 1e6
 
         try:
@@ -133,18 +136,15 @@ class PCRFitter:
                 f_exp, tau, D, s1, s2, self.L, self.alpha,
                 C_amp=C_amp, n_points=self.n_pts
             )
+            # Combinamos la amplitud física con el piso de ruido de forma no coherente
+            amp_teo = np.sqrt(amp_teo**2 + V_floor**2)
         except Exception:
             return np.ones(2 * len(f_exp)) * 1e6
 
-        # Error relativo en amplitud (sin unidades)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            r_amp = np.where(amp_exp > 0,
-                             (amp_exp - amp_teo) / amp_exp,
-                             amp_exp - amp_teo)
+        # ¡CLAVE!: Cambio a diferencia logarítmica para equilibrar las escalas de magnitud
+        r_amp = np.log10(amp_exp) - np.log10(amp_teo)
 
-        # Error absoluto en fase, normalizado por sigma_fase
         r_phase = (phase_exp - phase_teo) / self.sigma_fase
-
         return np.concatenate([r_amp, r_phase])
 
     # ── Estimación automática de semillas ─────────────────────────────────
@@ -189,73 +189,81 @@ class PCRFitter:
 
     # ── Ajuste principal ───────────────────────────────────────────────────
 
-    def fit(self,
-            f_exp:     np.ndarray,
-            amp_exp:   np.ndarray,
-            phase_exp: np.ndarray,
-            semillas:  Optional[dict] = None,
-            verbose:   bool = True) -> FitResult:
-        """
-        Ejecuta el ajuste Levenberg-Marquardt.
-
-        Parámetros
-        ----------
-        f_exp     : array de frecuencias [Hz]
-        amp_exp   : array de amplitudes [u.a.] (ya normalizadas al ref)
-        phase_exp : array de fases [grados]
-        semillas  : dict con llaves tau, D, s1, s2, C_amp.
-                    Si es None, se estiman automáticamente.
-        verbose   : imprime resultado al terminar
-
-        Retorna
-        -------
-        FitResult con parámetros ajustados e incertidumbres.
-        """
+    def fit(self, f_exp: np.ndarray, amp_exp: np.ndarray, phase_exp: np.ndarray,
+            semillas: Optional[dict] = None, verbose: bool = True) -> FitResult:
+        
         if semillas is None:
             semillas = self.auto_seeds(f_exp, amp_exp, phase_exp)
 
-        x0 = [semillas['tau'], semillas['D'],
-               semillas['s1'],  semillas['s2'], semillas['C_amp']]
+        # Calcular C_base dinámico para el equilibrio del solver
+        amp_teo_ref, _ = pcr_amplitude_phase(
+            [f_exp[0]], semillas['tau'], semillas['D'], semillas['s1'], 1e7,
+            self.L, self.alpha, C_amp=1.0, n_points=50
+        )
+        self.C_base = amp_exp[0] / (amp_teo_ref[0] + 1e-30)
 
-        bounds_lo = [1e-8,  0.1,  0.0,  0.0,  0.0]
-        bounds_hi = [1e-2, 40.0, 1e6,  1e6,  np.inf]
+        # Factores de escala para normalizar la matriz jacobiana cerca de 1.0
+        f_tau, f_D, f_s1, f_C, f_floor = 1e-5, 10.0, 1000.0, self.C_base, 1e-3
+
+        # Añadimos la semilla inicial del piso de ruido (0.001 real -> 1.0 escalado)
+        x0 = [
+            semillas['tau'] / f_tau, 
+            semillas['D'] / f_D, 
+            semillas['s1'] / f_s1, 
+            semillas['C_amp'] / f_C,
+            0.001 / f_floor
+        ]
+
+        bounds_lo = [1e-8 / f_tau,   0.1 / f_D,    0.0 / f_s1,   0.0,    0.0]
+        bounds_hi = [1e-2 / f_tau,  40.0 / f_D,    1e6 / f_s1,   np.inf, 0.2 / f_floor]
 
         result = least_squares(
             self._residuals,
             x0,
             args=(f_exp, amp_exp, phase_exp),
             bounds=(bounds_lo, bounds_hi),
-            method='trf',         # Trust Region Reflective (LM con límites)
-            loss='soft_l1',       # robusto a outliers
-            f_scale=0.1,          # escala de la pérdida robusta
+            method='trf',         
+            loss='soft_l1',       
+            f_scale=0.1,          
             max_nfev=2000,
-            xtol=1e-10,
-            ftol=1e-10,
-            gtol=1e-10,
-            verbose=1 if verbose else 0,
+            xtol=1e-12,
+            ftol=1e-12,
+            gtol=1e-12,
+            verbose=2 if verbose else 0,
         )
 
-        tau_o, D_o, s1_o, s2_o, C_o = result.x
+        # Extraer parámetros optimizados reales
+        tau_o   = result.x[0] * f_tau
+        D_o     = result.x[1] * f_D
+        s1_o    = result.x[2] * f_s1
+        C_o     = result.x[3] * f_C
+        floor_o = result.x[4] * f_floor
+        s2_o    = 1e7
 
-        # Estimación de incertidumbres desde la jacobiana
         try:
             J = result.jac
             cov = np.linalg.inv(J.T @ J) * (result.cost / (len(result.fun) - 5))
-            errs = np.sqrt(np.abs(np.diag(cov)))
+            errs_scaled = np.sqrt(np.abs(np.diag(cov)))
+            errs = [
+                errs_scaled[0] * f_tau,
+                errs_scaled[1] * f_D,
+                errs_scaled[2] * f_s1,
+                errs_scaled[3] * f_C
+            ]
         except np.linalg.LinAlgError:
-            errs = np.zeros(5)
-            warnings.warn("No se pudo invertir la Jacobiana; incertidumbres no disponibles.")
+            errs = [0.0, 0.0, 0.0, 0.0]
 
-        # Curvas del ajuste (resolución más alta para graficar)
         f_fine = np.logspace(np.log10(f_exp.min()), np.log10(f_exp.max()), 200)
         amp_fit, phase_fit = pcr_amplitude_phase(
             f_fine, tau_o, D_o, s1_o, s2_o, self.L, self.alpha,
             C_amp=C_o, n_points=self.n_pts
         )
+        # Aplicamos el piso de ruido calculado a la curva final graficada
+        amp_fit = np.sqrt(amp_fit**2 + floor_o**2)
 
         fit_result = FitResult(
             tau=tau_o, D=D_o, s1=s1_o, s2=s2_o, C_amp=C_o,
-            tau_err=errs[0], D_err=errs[1], s1_err=errs[2], s2_err=errs[3],
+            tau_err=errs[0], D_err=errs[1], s1_err=errs[2], s2_err=0.0,
             cost=result.cost,
             success=result.success,
             message=result.message,
@@ -266,10 +274,7 @@ class PCRFitter:
 
         if verbose:
             print(fit_result.summary())
-            f_opt = optimal_frequency(tau_o, D_o, self.L)
-            L_ac = diffusion_length_ac([f_opt], tau_o, D_o)[0]
-            print(f"\n  → Frecuencia óptima de barrido XY: {f_opt:.1f} Hz")
-            print(f"    |L_ac| = {L_ac*1e4:.0f} µm  (L/2 = {self.L/2*1e4:.0f} µm)")
+            print(f"  V_floor (piso de ruido instrumental) = {floor_o:.5f}")
 
         return fit_result
 

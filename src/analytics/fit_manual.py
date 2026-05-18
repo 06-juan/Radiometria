@@ -18,7 +18,7 @@ def animar_spinner(evento_parar, texto="Ajustando modelo"):
         i += 1
     sys.stdout.write(f"\r✅ {texto} completado!          \n")
 
-def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
+def calibrar_y_guardar(path_muestra, path_calibracion, path_salida, grosor, alpha, sigma_fase):
     con = duckdb.connect()
 
     # 1. INSPECCIONAR EL ESQUEMA
@@ -62,21 +62,35 @@ def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
         os.rename(temp_path, path_muestra)
         print("✅ Archivo original actualizado con 'phase_normalized' y 'magnitude_normalized'.")
 
-    # 3. CARGA DE DATOS PARA EL AJUSTE (Ahora ya existen seguro)
+    # 3. CARGA DE DATOS PARA EL AJUSTE
     mu_data = con.execute(f"""
-        SELECT laser_freq, magnitude_normalized, phase_normalized
+        SELECT 
+            laser_freq, 
+            AVG(magnitude_normalized) AS magnitude_normalized, 
+            AVG(phase_normalized) AS phase_normalized
         FROM read_parquet('{path_muestra}')
         WHERE x_pos = 0.0 AND y_pos = 0.0
+        GROUP BY laser_freq
         ORDER BY laser_freq ASC
     """).fetchnumpy()
     
     f_exp = mu_data['laser_freq'].astype(float)
     amp_norm = mu_data['magnitude_normalized'].astype(float)
     phase_true = mu_data['phase_normalized'].astype(float)
+    
+    # Esto te dirá cuántos puntos reales le quedan al ajuste (deberían ser entre 30 y 80 puntos)
+    print(f"📉 Datos reducidos a {len(f_exp)} frecuencias únicas para el ajuste rápido.")
+    
+    f_exp = mu_data['laser_freq'].astype(float)
+    amp_norm = mu_data['magnitude_normalized'].astype(float)
+    phase_true = mu_data['phase_normalized'].astype(float)
 
     # 4. EJECUTAR EL AJUSTE PCR
-    fitter = PCRFitter(L=0.035, alpha=1.5e5, sigma_fase=2.0)
-    semillas = {'tau': 1e-6, 'D': 3.0, 's1': 500.0, 's2': 5000.0, 'C_amp': 1.0}
+    # tau = 40 microsegundos = 4e-5 s
+    # D = 12.0 cm²/s (Valor estándar del Silicio)
+    # s2 ya NO se pasa porque es fija adentro del motor
+    fitter = PCRFitter(grosor, alpha, sigma_fase)
+    semillas = {'tau': 4e-5, 'D': 12.0, 's1': 1000.0, 'C_amp': 1.0}
     
     parar_spinner = threading.Event()
     hilo_spinner = threading.Thread(target=animar_spinner, args=(parar_spinner, "Ajustando modelo PCR"))
@@ -108,21 +122,42 @@ def calibrar_y_guardar(path_muestra, path_calibracion, path_salida):
 
     # 6. VISUALIZACIÓN
     if resultado.success:
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-        ax1.loglog(f_exp, amp_norm, 'ok', label='Medido (Normalizado)')
-        ax1.loglog(resultado.f_fit, resultado.amp_fit, 'r-', label='Ajuste PCR')
-        ax1.set_ylabel("Amplitud")
-        ax1.legend()
+        from pcr_model import pcr_amplitude_phase # Aseguramos la importación
         
+        # Calcular la curva teórica de la SEMILLA INICIAL para comparar
+        amp_init, phase_init = pcr_amplitude_phase(
+            resultado.f_fit, 
+            semillas['tau'], semillas['D'], semillas['s1'], 1e7,
+            grosor, alpha, C_amp=semillas['C_amp'], n_points=150
+        )
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
+        
+        # Plot de Amplitudes
+        ax1.loglog(f_exp, amp_norm, 'ok', label='Medido (Normalizado)')
+        ax1.loglog(resultado.f_fit, amp_init, 'b--', alpha=0.6, label='Semilla Inicial')
+        ax1.loglog(resultado.f_fit, resultado.amp_fit, 'r-', linewidth=2, label='Ajuste PCR Final')
+        ax1.set_ylabel("Amplitud (u.a.)")
+        ax1.legend()
+        ax1.grid(True, which="both", ls="--", alpha=0.5)
+        
+        # Plot de Fases
         ax2.semilogx(f_exp, phase_true, 'ok')
-        ax2.semilogx(resultado.f_fit, resultado.phase_fit, 'r-')
+        ax2.semilogx(resultado.f_fit, phase_init, 'b--', alpha=0.6)
+        ax2.semilogx(resultado.f_fit, resultado.phase_fit, 'r-', linewidth=2)
         ax2.set_ylabel("Fase (°)")
         ax2.set_xlabel("Frecuencia (Hz)")
+        ax2.grid(True, which="both", ls="--", alpha=0.5)
+        
+        plt.tight_layout()
         plt.show()
 
 if __name__ == "__main__":
     calibrar_y_guardar(
-        path_muestra="data/raw/FREQ_20260515_1738.parquet",
+        path_muestra="data/raw/FREQ_20260515_1755.parquet",
         path_calibracion="data/calibracion/calibracion.parquet",
-        path_salida="data/procesados/PROCESADO_InP_0843.parquet"
+        path_salida="data/procesados/PROCESADO_InP_0843.parquet",
+        grosor=0.025, # en cm 
+        alpha=1e4, 
+        sigma_fase=2.0
     )
