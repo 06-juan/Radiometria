@@ -39,7 +39,7 @@ class Grafica3DRealTime(QWidget):
       · fondo gris neutro
     """
 
-    def __init__(self, titulo_z: str = "Amplitud (µV)", titulo: str = ""):
+    def __init__(self, titulo_z: str = "Amplitud Normalizada", titulo: str = ""):
         super().__init__()
         self.titulo_z      = titulo_z
         self.titulo_figura = titulo
@@ -108,10 +108,10 @@ class Grafica3DRealTime(QWidget):
         self._cb = self._fig_cb.colorbar(sm, cax=self._ax_cb)
 
         # formato de ticks según unidad
-        if "µV" in self.titulo_z:
+        if "Normalizada" in self.titulo_z:
             self._cb.formatter = matplotlib.ticker.FuncFormatter(
                 lambda x, _: f"{x*1e6:.2f}")
-            self._cb.set_label("µV", color='white', fontsize=8, labelpad=4)
+            self._cb.set_label("", color='white', fontsize=8, labelpad=4)
         elif "°" in self.titulo_z:
             self._cb.formatter = matplotlib.ticker.FuncFormatter(
                 lambda x, _: f"{x:.1f}°")
@@ -293,8 +293,8 @@ class Grafica3DRealTime(QWidget):
             frac    = i / pasos
             z_real  = z_min + frac * (z_max - z_min)
             z_pos   = frac * z_height
-            if "µV" in self.titulo_z:
-                label = f"{z_real*1e6:.2f} µV"
+            if "Normalizada" in self.titulo_z:
+                label = f"{z_real:.2f}"
             elif "°" in self.titulo_z:
                 label = f"{z_real:.1f}°"
             else:
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     import matplotlib.ticker   # necesario para el formatter de la colorbar
 
     app = QApplication(sys.argv)
-    ventana = Grafica3DRealTime(titulo_z="Amplitud (µV)", titulo="Mapa 3D en tiempo real")
+    ventana = Grafica3DRealTime(titulo_z="Amplitud Normalizada", titulo="Mapa 3D en tiempo real")
     ventana.resize(1000, 680)
     ventana.setWindowTitle("Mapa 3D — tiempo real")
     ventana.show()

@@ -758,9 +758,9 @@ class MainWindow(QMainWindow):
         layout_3d = QHBoxLayout(widget_3d)
         layout_3d.setSpacing(12)
         self.plotter_fase = Grafica3DRealTime(titulo_z="Fase °")
-        self.plotter_mag  = Grafica3DRealTime(titulo_z="R (µV)")
+        self.plotter_mag  = Grafica3DRealTime(titulo_z="R Normalizada")
         layout_3d.addWidget(self._wrap_plot_card(self.plotter_fase, "FASE  φ (°)",    "fase_meta"))
-        layout_3d.addWidget(self._wrap_plot_card(self.plotter_mag,  "AMPLITUD  R (µV)", "mag_meta"))
+        layout_3d.addWidget(self._wrap_plot_card(self.plotter_mag,  "AMPLITUD  R Normalizada", "mag_meta"))
         self.stack_graficas.addWidget(widget_3d)
 
         # Página 1 — 2D
@@ -918,7 +918,7 @@ class MainWindow(QMainWindow):
     def _update_stats(self, x=None, y=None, r=None, phi=None):
         if x   is not None: self.stat_x.setText(f"{x:.3f} mm")
         if y   is not None: self.stat_y.setText(f"{y:.3f} mm")
-        if r   is not None: self.stat_r.setText(f"{r:.2f} µV")
+        if r   is not None: self.stat_r.setText(f"{r:.2f}")
         if phi is not None: self.stat_phi.setText(f"{phi:.2f}°")
         self._npts += 1
         self.stat_npts.setText(str(self._npts))
