@@ -164,15 +164,15 @@ QPushButton#btn_measure:hover {
     color: #00c9a7;
 }
 
-/* Barrido Freq → ámbar */
+/* Barrido Freq → cian */
 QPushButton#btn_cruz {
-    border-color: rgba(245,158,11,0.3);
-    color: #c9975a;
+    border-color: rgba(0,201,167,0.3);
+    color: #5ecfb8;
 }
 QPushButton#btn_cruz:hover {
-    background-color: rgba(245,158,11,0.08);
-    border-color: rgba(245,158,11,0.6);
-    color: #f59e0b;
+    background-color: rgba(0,201,167,0.08);
+    border-color: rgba(0,201,167,0.6);
+    color: #00c9a7;
 }
 
 /* Stop → rojo */
@@ -1107,7 +1107,7 @@ class MainWindow(QMainWindow):
         self.plot_quad_2d.limpiar()
 
         exp_id = self.db.iniciar_nuevo_experimento(tipo="FREQ")
-        self.db.cargar_referencia_calibracion("data\calibracion\calibracion.parquet")
+        self.db.cargar_referencia_calibracion("data/calibracion/calibracion.parquet")
 
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
