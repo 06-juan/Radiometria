@@ -769,10 +769,10 @@ class MainWindow(QMainWindow):
         layout_2d.setSpacing(12)
         self.plot_mag_2d  = Grafica2DRealTime("Amplitud R (V) vs Freq",  log_x=True, log_y=True)
         self.plot_fase_2d = Grafica2DRealTime("Fase (°) vs Freq",         log_x=True, log_y=False)
-        self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (V) vs Freq", log_x=True, log_y=True)
+        #self.plot_quad_2d = Grafica2DRealTime("Cuadratura Y (V) vs Freq", log_x=True, log_y=True)
         layout_2d.addWidget(self._wrap_plot_card(self.plot_mag_2d,  "AMPLITUD  R (V)",    "mag2d_meta"))
         layout_2d.addWidget(self._wrap_plot_card(self.plot_fase_2d, "FASE  φ (°)",         "fase2d_meta"))
-        layout_2d.addWidget(self._wrap_plot_card(self.plot_quad_2d, "CUADRATURA  Y (V)",  "quad2d_meta"))
+        #layout_2d.addWidget(self._wrap_plot_card(self.plot_quad_2d, "CUADRATURA  Y (V)",  "quad2d_meta"))
         self.stack_graficas.addWidget(widget_2d)
 
         layout.addWidget(self.stack_graficas, 1)
@@ -1104,7 +1104,7 @@ class MainWindow(QMainWindow):
 
         self.plot_mag_2d.limpiar()
         self.plot_fase_2d.limpiar()
-        self.plot_quad_2d.limpiar()
+        #self.plot_quad_2d.limpiar()
 
         exp_id = self.db.iniciar_nuevo_experimento(tipo="FREQ")
         self.db.cargar_referencia_calibracion("data/calibracion/calibracion.parquet")
@@ -1144,8 +1144,8 @@ class MainWindow(QMainWindow):
             self.plot_fase_2d.actualizar(f, phi_n, curve_idx=idx)
         
         # Graficamos Cuadratura (Y) normal
-        if y_quad is not None: 
-            self.plot_quad_2d.actualizar(f, y_quad, curve_idx=idx)
+        #if y_quad is not None: 
+            #self.plot_quad_2d.actualizar(f, y_quad, curve_idx=idx)
 
         # 4. Estadísticas (usando r crudo y fase normalizada para ser consistentes)
         self._update_stats(r=r_raw, phi=phi_n)
@@ -1316,12 +1316,12 @@ class MainWindow(QMainWindow):
         self._switch_tab(1)
         self.plot_mag_2d.limpiar()
         self.plot_fase_2d.limpiar()
-        self.plot_quad_2d.limpiar()
+        #self.plot_quad_2d.limpiar()
 
         for i, (_, data) in enumerate(curves_data.items()):
             self.plot_mag_2d.set_datos_completos(data["freq"], data["mag_n"],  curve_idx=i)
             self.plot_fase_2d.set_datos_completos(data["freq"], data["phi_n"],  curve_idx=i)
-            self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=i)
+            #self.plot_quad_2d.set_datos_completos(data["freq"], data["quad"], curve_idx=i)
 
         QMessageBox.information(self, "Espectro cargado",
                                 f"'{exp_id}' · {len(curves_data)} curva(s).")
