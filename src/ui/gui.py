@@ -1,6 +1,6 @@
-import os
 import sys
 import time
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QSlider, QFrame, QMessageBox, QLineEdit,
@@ -130,39 +130,25 @@ class MainWindow(QMainWindow):
         self.is_homed     = False
         self.pending_task = None
         self._npts        = 0
-
-        # 🔄 CAMBIO AQUÍ: En lugar de self.setStyleSheet(QSS), llamamos al método dinámico
+        
         self.load_stylesheet()
         self.init_ui()
 
     def load_stylesheet(self):
         """Busca y aplica el archivo QSS de forma robusta en cualquier entorno de carpetas"""
         # Directorio actual donde está este archivo gui.py
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+        current_dir = Path(__file__).resolve().parent
         
-        # Estrategia de búsqueda multiruta para evitar fallos de "File Not Found":
-        # 1. Si gui.py está en la raíz del proyecto (Radiometria/)
-        path_raiz = os.path.join(current_dir, "src", "ui", "styles.qss")
-        # 2. Si gui.py está dentro de src/ o carpetas hermanas a ui/ (ej. src/utils/)
-        path_hermano = os.path.join(os.path.dirname(current_dir), "ui", "styles.qss")
-        # 3. Si gui.py está metido dentro de la misma carpeta src/ui/
-        path_mismo_dir = os.path.join(current_dir, "styles.qss")
-        
-        qss_path = None
-        for path in [path_raiz, path_hermano, path_mismo_dir]:
-            if os.path.exists(path):
-                qss_path = path
-                break
+        qss_path = current_dir / "styles.qss"
                 
         if qss_path:
             try:
                 with open(qss_path, "r", encoding="utf-8") as f:
                     self.setStyleSheet(f.read())
-                print(f"[QSS] Estilos cargados exitosamente desde: {qss_path}")
             except Exception as e:
                 print(f"[QSS] Error al leer el archivo de estilos: {e}")
         else:
-            print("[QSS] Advertencia: No se encontró 'styles.qss' en ninguna ruta esperada.")
+            print(f"[QSS] Advertencia: No se encontró 'styles.qss' en {str(qss_path)}.")
             # Fallback estético básico por seguridad
             self.setStyleSheet("QMainWindow { background-color: #0a0d12; color: #e8eaf0; }")
 
@@ -941,16 +927,14 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Visualizar", "Selecciona una medición.")
             return
 
-        path_parquet = os.path.join("data/raw", f"{exp_id}.parquet")
+        path_parquet = Path("data/raw") / f"{exp_id}.parquet"
 
-        if not os.path.exists(path_parquet):
+        if not path_parquet.exists():
             QMessageBox.critical(self, "Error", f"No se encontró el archivo: {path_parquet}")
             return
 
         try:
-            # Consultamos directamente el archivo Parquet usando la ruta entre comillas simples
-            # Esto evita el error de "Table with name mediciones does not exist"
-            query = f"SELECT COUNT(DISTINCT laser_freq) FROM '{path_parquet}'"
+            query = f"SELECT COUNT(DISTINCT laser_freq) FROM '{str(path_parquet)}'"
             res = self.db_viewer.conn.execute(query).fetchone()
 
             if res and res[0] > 1:
