@@ -147,6 +147,18 @@ void processCommand(String cmd) {
     } else {
       Serial.println("ERR Invalid SWEEP parameters");
     }
+  } else if (cmd.startsWith("MOVE")) {
+    float x, y;
+    if (parseTwoFloats(cmd, 4, x, y)) { // 4 es la longitud de "MOVE"
+      if (!motorsEnabled) {
+        digitalWrite(ENABLE_PIN, LOW);
+        motorsEnabled = true;
+      }
+      moveToMM(x, y); 
+      Serial.println("OK"); // Responde OK para liberar la interfaz
+    } else {
+      Serial.println("ERR Invalid MOVE parameters. Use: MOVE x y");
+    }
   } else {
     Serial.println("ERR Unknown command");
   }

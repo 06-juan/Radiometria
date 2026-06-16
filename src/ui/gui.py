@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -12,387 +13,6 @@ from src.ui.plots.graficar_3d import Grafica3DRealTime
 from src.ui.plots.grafica_2d import Grafica2DRealTime
 from src.ingest.mesaxy import MesaXY, LASER_ON_VOLTAGE, LASER_OFF_VOLTAGE
 from src.ingest.data_manager import DataManager
-
-
-# ─────────────────────────────────────────────
-#  STYLESHEET GLOBAL
-# ─────────────────────────────────────────────
-QSS = """
-QMainWindow, QWidget#root {
-    background-color: #0a0d12;
-    color: #e8eaf0;
-}
-
-/* ── Sidebar ── */
-QFrame#sidebar {
-    background-color: #111620;
-    border-right: 1px solid rgba(255,255,255,0.07);
-}
-
-/* ── Sección labels ── */
-QLabel#section_label {
-    color: #5a6479;
-    font-size: 9px;
-    letter-spacing: 2px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    padding: 10px 0px 4px 0px;
-    text-transform: uppercase;
-}
-
-QLabel#logo_tag {
-    color: #00c9a7;
-    font-size: 9px;
-    letter-spacing: 2px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QLabel#logo_title {
-    color: #e8eaf0;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-QLabel#logo_sub {
-    color: #5a6479;
-    font-size: 10px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-/* ── Status bar ── */
-QFrame#status_strip {
-    background-color: #0e1219;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    border-top: 1px solid rgba(255,255,255,0.07);
-}
-
-QLabel#hw_status {
-    color: #8892a4;
-    font-size: 10px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-/* ── Param labels ── */
-QLabel#param_name {
-    color: #8892a4;
-    font-size: 11px;
-}
-
-QLineEdit#param_value {
-    color: #00c9a7;
-    background-color: rgba(0,201,167,0.08);
-    border: 1px solid rgba(0,201,167,0.2);
-    border-radius: 4px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 11px;
-    padding: 1px 6px;
-    max-width: 65px;
-}
-
-QLineEdit#param_value:focus {
-    border: 1px solid #00c9a7;
-    background-color: rgba(0,201,167,0.14);
-}
-
-/* ── Sliders ── */
-QSlider::groove:horizontal {
-    height: 3px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 2px;
-}
-
-QSlider::handle:horizontal {
-    background: #00c9a7;
-    border: 2px solid #0a0d12;
-    width: 14px;
-    height: 14px;
-    margin: -6px 0;
-    border-radius: 7px;
-}
-
-QSlider::handle:horizontal:hover {
-    background: #00e5c0;
-}
-
-QSlider::sub-page:horizontal {
-    background: rgba(0,201,167,0.35);
-    border-radius: 2px;
-}
-
-/* ── Botones generales ── */
-QPushButton {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    border-radius: 7px;
-    padding: 9px 12px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background-color: #161c28;
-    color: #8892a4;
-    text-transform: uppercase;
-}
-
-QPushButton:hover {
-    background-color: #1e2535;
-    color: #e8eaf0;
-}
-
-QPushButton:disabled {
-    color: #3a4155;
-    border-color: rgba(255,255,255,0.04);
-    background-color: #0e1118;
-}
-
-/* Home → azul */
-QPushButton#btn_home {
-    border-color: rgba(59,130,246,0.3);
-    color: #7ba7e8;
-}
-QPushButton#btn_home:hover {
-    background-color: rgba(59,130,246,0.1);
-    border-color: rgba(59,130,246,0.6);
-    color: #93c5fd;
-}
-
-/* Barrido XY → cian */
-QPushButton#btn_measure {
-    border-color: rgba(0,201,167,0.3);
-    color: #5ecfb8;
-}
-QPushButton#btn_measure:hover {
-    background-color: rgba(0,201,167,0.08);
-    border-color: rgba(0,201,167,0.6);
-    color: #00c9a7;
-}
-
-/* Barrido Freq → cian */
-QPushButton#btn_cruz {
-    border-color: rgba(0,201,167,0.3);
-    color: #5ecfb8;
-}
-QPushButton#btn_cruz:hover {
-    background-color: rgba(0,201,167,0.08);
-    border-color: rgba(0,201,167,0.6);
-    color: #00c9a7;
-}
-
-/* Stop → rojo */
-QPushButton#btn_stop {
-    border-color: rgba(239,68,68,0.3);
-    color: #c46b6b;
-}
-QPushButton#btn_stop:hover {
-    background-color: rgba(239,68,68,0.08);
-    border-color: rgba(239,68,68,0.6);
-    color: #fca5a5;
-}
-
-/* Cargar → púrpura */
-QPushButton#btn_visualizar {
-    border-color: rgba(139,92,246,0.3);
-    color: #a48ee8;
-    padding: 8px 12px;
-}
-QPushButton#btn_visualizar:hover {
-    background-color: rgba(139,92,246,0.1);
-    border-color: rgba(139,92,246,0.6);
-    color: #c4b5fd;
-}
-
-/* Botones pequeños */
-QPushButton#btn_rename, QPushButton#btn_delete {
-    font-size: 10px;
-    padding: 5px 8px;
-    border-radius: 5px;
-}
-QPushButton#btn_delete:hover {
-    background-color: rgba(239,68,68,0.08);
-    border-color: rgba(239,68,68,0.5);
-    color: #fca5a5;
-}
-
-/* ── ComboBox ── */
-QComboBox {
-    background-color: #161c28;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    color: #8892a4;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 10px;
-    padding: 6px 10px;
-}
-
-QComboBox:hover {
-    border-color: rgba(255,255,255,0.18);
-    color: #e8eaf0;
-}
-
-QComboBox::drop-down {
-    border: none;
-    width: 20px;
-}
-
-QComboBox QAbstractItemView {
-    background-color: #161c28;
-    border: 1px solid rgba(255,255,255,0.12);
-    color: #8892a4;
-    selection-background-color: rgba(0,201,167,0.15);
-    selection-color: #00c9a7;
-    font-size: 10px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-/* ── Alias input ── */
-QLineEdit#alias_input {
-    background-color: #161c28;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    color: #8892a4;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 10px;
-    padding: 5px 8px;
-}
-
-QLineEdit#alias_input:focus {
-    border-color: rgba(255,255,255,0.2);
-    color: #e8eaf0;
-}
-
-/* ── Panel gráficas ── */
-QWidget#main_panel {
-    background-color: #0a0d12;
-}
-
-QFrame#plot_card {
-    background-color: #111620;
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 10px;
-}
-
-QLabel#plot_title {
-    color: #8892a4;
-    font-size: 10px;
-    letter-spacing: 1px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    text-transform: uppercase;
-}
-
-QLabel#plot_meta {
-    color: #5a6479;
-    font-size: 9px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-/* ── Topbar tabs ── */
-QFrame#topbar {
-    background-color: #0e1219;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-}
-
-QPushButton#tab_btn {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    border-radius: 0px;
-    padding: 10px 16px;
-    border: none;
-    border-bottom: 2px solid transparent;
-    background-color: transparent;
-    color: #5a6479;
-    text-transform: uppercase;
-}
-
-QPushButton#tab_btn:hover {
-    color: #8892a4;
-    background-color: transparent;
-}
-
-QPushButton#tab_btn[active="true"] {
-    color: #00c9a7;
-    border-bottom: 2px solid #00c9a7;
-}
-
-/* ── Stats bar inferior ── */
-QFrame#stats_bar {
-    background-color: #0e1219;
-    border-top: 1px solid rgba(255,255,255,0.07);
-}
-
-QLabel#stat_lbl {
-    color: #5a6479;
-    font-size: 9px;
-    letter-spacing: 2px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QLabel#stat_val {
-    color: #8892a4;
-    font-size: 11px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QLabel#stat_val_hi {
-    color: #00c9a7;
-    font-size: 11px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QLabel#live_chip {
-    color: #00c9a7;
-    background-color: rgba(0,201,167,0.08);
-    border: 1px solid rgba(0,201,167,0.25);
-    border-radius: 10px;
-    font-size: 9px;
-    letter-spacing: 2px;
-    padding: 2px 8px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QLabel#freq_chip {
-    color: #5a6479;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 2px 8px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-QStatusBar {
-    background-color: #0a0d12;
-    color: #5a6479;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 9px;
-    border-top: 1px solid rgba(255,255,255,0.05);
-}
-
-/* Laser — apagado */
-QPushButton#btn_laser {
-    border-color: rgba(34,197,94,0.3);
-    color: #5a8a6a;
-}
-QPushButton#btn_laser:hover {
-    background-color: rgba(34,197,94,0.08);
-    border-color: rgba(34,197,94,0.6);
-    color: #22c55e;
-}
-/* Laser — encendido (checked) */
-QPushButton#btn_laser:checked {
-    background-color: rgba(34,197,94,0.12);
-    border-color: rgba(34,197,94,0.7);
-    color: #22c55e;
-}
-QPushButton#btn_laser:checked:hover {
-    background-color: rgba(239,68,68,0.08);
-    border-color: rgba(239,68,68,0.5);
-    color: #fca5a5;
-}
-QPushButton#btn_laser:disabled {
-    color: #3a4155;
-    border-color: rgba(255,255,255,0.04);
-    background-color: #0e1118;
-}
-"""
-
 
 # ─────────────────────────────────────────────
 #  HILOS
@@ -511,8 +131,40 @@ class MainWindow(QMainWindow):
         self.pending_task = None
         self._npts        = 0
 
-        self.setStyleSheet(QSS)
+        # 🔄 CAMBIO AQUÍ: En lugar de self.setStyleSheet(QSS), llamamos al método dinámico
+        self.load_stylesheet()
         self.init_ui()
+
+    def load_stylesheet(self):
+        """Busca y aplica el archivo QSS de forma robusta en cualquier entorno de carpetas"""
+        # Directorio actual donde está este archivo gui.py
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Estrategia de búsqueda multiruta para evitar fallos de "File Not Found":
+        # 1. Si gui.py está en la raíz del proyecto (Radiometria/)
+        path_raiz = os.path.join(current_dir, "src", "ui", "styles.qss")
+        # 2. Si gui.py está dentro de src/ o carpetas hermanas a ui/ (ej. src/utils/)
+        path_hermano = os.path.join(os.path.dirname(current_dir), "ui", "styles.qss")
+        # 3. Si gui.py está metido dentro de la misma carpeta src/ui/
+        path_mismo_dir = os.path.join(current_dir, "styles.qss")
+        
+        qss_path = None
+        for path in [path_raiz, path_hermano, path_mismo_dir]:
+            if os.path.exists(path):
+                qss_path = path
+                break
+                
+        if qss_path:
+            try:
+                with open(qss_path, "r", encoding="utf-8") as f:
+                    self.setStyleSheet(f.read())
+                print(f"[QSS] Estilos cargados exitosamente desde: {qss_path}")
+            except Exception as e:
+                print(f"[QSS] Error al leer el archivo de estilos: {e}")
+        else:
+            print("[QSS] Advertencia: No se encontró 'styles.qss' en ninguna ruta esperada.")
+            # Fallback estético básico por seguridad
+            self.setStyleSheet("QMainWindow { background-color: #0a0d12; color: #e8eaf0; }")
 
     # ──────────────────────────────────────────
     #  CONSTRUCCIÓN DE LA UI

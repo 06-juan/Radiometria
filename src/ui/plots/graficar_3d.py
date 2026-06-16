@@ -26,8 +26,6 @@ COLOR_GRILLA = (0, 0, 0, 0.1)  # gris para la grilla de piso
 
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt6.QtCore import QTimer, Qt
-import pyvista as pv
-from pyvistaqt import QtInteractor
 
 class Grafica3DRealTime(QWidget):
     """
