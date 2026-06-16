@@ -1,14 +1,14 @@
 import duckdb
 import json
 from datetime import datetime
-import os
+from pathlib import Path
 import numpy as np
 
 class DataManager:
     def __init__(self, folder="data/raw"):
-        self.folder = folder
-        if not os.path.exists(self.folder):
-            os.makedirs(self.folder)
+        self.folder = Path(folder)
+        
+        self.folder.mkdir(parents=True, exist_ok=True)
             
         self.conn = duckdb.connect(database=':memory:')
         self.current_experiment_id = None
@@ -42,7 +42,10 @@ class DataManager:
 
     def cargar_referencia_calibracion(self, path_calibracion):
         """Carga la calibración en memoria para cálculos instantáneos."""
-        if not os.path.exists(path_calibracion):
+        
+        path_cal = Path(path_calibracion)
+        
+        if not path_cal.exists():
             print(f"⚠️ Archivo de calibración no encontrado en {path_calibracion}")
             return False
         
@@ -50,7 +53,7 @@ class DataManager:
             # Cargamos los datos de referencia (ej. del acero)
             cal_data = duckdb.execute(f"""
                 SELECT laser_freq, phase_phi 
-                FROM read_parquet('{path_calibracion}') 
+                FROM read_parquet('{str(path_cal)}') 
                 ORDER BY laser_freq ASC
             """).fetchnumpy()
             
@@ -128,8 +131,9 @@ class DataManager:
             """)
             
             # Exportar a disco
-            path = os.path.join(self.folder, f"{self.current_experiment_id}.parquet")
-            self.conn.execute(f"COPY buffer_activo TO '{path}' (FORMAT PARQUET)")
+            path = self.folder / f"{self.current_experiment_id}.parquet"
+
+            self.conn.execute(f"COPY buffer_activo TO '{str(path)}' (FORMAT PARQUET)")
             self.conn.execute("DELETE FROM buffer_activo")
             self.max_mag_actual = 0.0 # Reset para el próximo
             print(f"✅ Guardado con normalización global en: {path}")
@@ -185,15 +189,17 @@ class DataManager:
 
     def listar_mediciones(self):
         """Busca en todos los archivos .parquet de la carpeta."""
-        path_glob = os.path.join(self.folder, "*.parquet")
-        if not any(fname.endswith('.parquet') for fname in os.listdir(self.folder)):
+
+        path_glob = self.folder / "*.parquet"
+        
+        if not any(self.folder.glob("*.parquet")):
             return []
             
         try:
             # DuckDB lee todos los archivos al vuelo
             query = f"""
                 SELECT experiment_id, MIN(timestamp) as fecha, COUNT(*) as n_puntos
-                FROM '{path_glob}'
+                FROM '{str(path_glob)}'
                 GROUP BY experiment_id
                 ORDER BY fecha DESC
             """
@@ -204,14 +210,15 @@ class DataManager:
 
     def cargar_medicion(self, experiment_id):
         """Carga datos desde el archivo Parquet específico para visualización 3D."""
-        path = os.path.join(self.folder, f"{experiment_id}.parquet")
-        if not os.path.exists(path): 
+
+        path = self.folder / f"{experiment_id}.parquet"
+        if not path.exists(): 
             return None
 
         # Intentamos primero con las columnas nuevas
         intentos_query = [
-            f"SELECT x_pos, y_pos, magnitude_normalized, phase_normalized, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC",
-            f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{path}' ORDER BY y_pos ASC, x_pos ASC"
+            f"SELECT x_pos, y_pos, magnitude_normalized, phase_normalized, laser_freq FROM '{str(path)}' ORDER BY y_pos ASC, x_pos ASC",
+            f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{str(path)}' ORDER BY y_pos ASC, x_pos ASC"
         ]
 
         rows = None
@@ -259,8 +266,9 @@ class DataManager:
 
     def cargar_medicion_2d(self, experiment_id):
         """Carga datos desde el Parquet para curvas 2D."""
-        path = os.path.join(self.folder, f"{experiment_id}.parquet")
-        if not os.path.exists(path): return None
+
+        path = self.folder / f"{experiment_id}.parquet"
+        if not path.exists(): return None
 
         try:
             query = f"SELECT x_pos, laser_freq, magnitude_normalized, phase_normalized, ch_y FROM '{path}' ORDER BY x_pos ASC, laser_freq ASC"
@@ -286,10 +294,10 @@ class DataManager:
 
     def eliminar_medicion(self, experiment_id):
         """Borra el archivo Parquet físico."""
-        path = os.path.join(self.folder, f"{experiment_id}.parquet")
+        path = self.folder / f"{experiment_id}.parquet"
         try:
-            if os.path.exists(path):
-                os.remove(path)
+            if path.exists():
+                path.unlink()
                 self.guardar_alias(experiment_id, "")
                 return True
         except Exception as e:
@@ -297,19 +305,29 @@ class DataManager:
         return False
 
     def obtener_alias(self, experiment_id):
-        path = os.path.join(self.folder, "aliases.json")
-        if not os.path.exists(path): return None
-        with open(path, "r") as f:
-            return json.load(f).get(experiment_id)
+        path = self.folder / "aliases.json"
+        if not path.exists(): return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8")).get(experiment_id)
+        except Exception:
+            return None
 
     def guardar_alias(self, experiment_id, alias):
-        path = os.path.join(self.folder, "aliases.json")
+        path = self.folder / "aliases.json"
         aliases = {}
-        if os.path.exists(path):
-            with open(path, "r") as f: aliases = json.load(f)
-        if alias.strip(): aliases[experiment_id] = alias.strip()
-        else: aliases.pop(experiment_id, None)
-        with open(path, "w") as f: json.dump(aliases, f, indent=2)
+        
+        if path.exists():
+            try:
+                aliases = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                aliases = {}
+                
+        if alias.strip(): 
+            aliases[experiment_id] = alias.strip()
+        else: 
+            aliases.pop(experiment_id, None)
+
+        path.write_text(json.dumps(aliases, indent=2), encoding="utf-8")
 
     def cerrar(self):
         self.conn.close()
