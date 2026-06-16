@@ -9,7 +9,7 @@ class DataManager:
         self.folder = Path(folder)
         
         self.folder.mkdir(parents=True, exist_ok=True)
-            
+        
         self.conn = duckdb.connect(database=':memory:')
         self.current_experiment_id = None
         
@@ -271,7 +271,7 @@ class DataManager:
         if not path.exists(): return None
 
         try:
-            query = f"SELECT x_pos, laser_freq, magnitude_normalized, phase_normalized, ch_y FROM '{path}' ORDER BY x_pos ASC, laser_freq ASC"
+            query = f"SELECT x_pos, laser_freq, magnitude_normalized, phase_normalized, ch_y FROM '{str(path)}' ORDER BY x_pos ASC, laser_freq ASC"
             rows = self.conn.execute(query).fetchall()
             
             curves = {}
