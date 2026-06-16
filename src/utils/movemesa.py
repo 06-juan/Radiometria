@@ -164,7 +164,7 @@ class ManualControlWindow(QMainWindow):
         info_row = QHBoxLayout()
         lbl_step_title = QLabel("DISTANCIA DE PASO:")
         lbl_step_title.setStyleSheet("color: #8892a4; font-size: 10px; font-weight: bold; font-family: 'JetBrains Mono';")
-        self.lbl_step_val = QLabel(f"{c.DEFAULT_STEP:.1f} mm")
+        self.lbl_step_val = QLabel(f"{c.DEFAULT_STEP:.2f} mm")
         self.lbl_step_val.setStyleSheet("color: #00c9a7; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono';")
         info_row.addWidget(lbl_step_title)
         info_row.addStretch()
@@ -199,7 +199,7 @@ class ManualControlWindow(QMainWindow):
 
     def sync_slider_label(self):
         valor_mm = self.slider.value() / c.STEP_FACTOR
-        self.lbl_step_val.setText(f"{valor_mm:.1f} mm")
+        self.lbl_step_val.setText(f"{valor_mm:.2f} mm")
 
     def set_ui_controls_enabled(self, enabled: bool):
         self.btn_up.setEnabled(enabled)
@@ -251,17 +251,17 @@ class ManualControlWindow(QMainWindow):
         if not (c.X_MIN <= target_x <= c.X_MAX):
             QMessageBox.warning(self, "Límite Excedido", 
                                  f"Movimiento denegado.\nEl eje X saldría del rango seguro ({c.X_MIN} - {c.X_MAX} mm).\n"
-                                 f"Posición calculada: {target_x:.1f} mm")
+                                 f"Posición calculada: {target_x:.2f} mm")
             return
 
         if not (c.Y_MIN <= target_y <= c.Y_MAX):
             QMessageBox.warning(self, "Límite Excedido", 
                                  f"Movimiento denegado.\nEl eje Y saldría del rango seguro ({c.Y_MIN} - {c.Y_MAX} mm).\n"
-                                 f"Posición calculada: {target_y:.1f} mm")
+                                 f"Posición calculada: {target_y:.2f} mm")
             return
 
         self.set_ui_controls_enabled(False)
-        self.hw_text.setText(f"Moviendo a -> X: {target_x:.1f} Y: {target_y:.1f}")
+        self.hw_text.setText(f"Moviendo a -> X: {target_x:.2f} Y: {target_y:.2f}")
 
         self.move_worker = MoveWorker(self.mesa, target_x, target_y)
         self.move_worker.finished_signal.connect(self.on_move_completed)
