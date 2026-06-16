@@ -1,7 +1,7 @@
 # src/utils/movemesa.py
 import sys
-from pathlib import Path
 import time
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QSlider, QFrame, QMessageBox, QGridLayout
@@ -9,13 +9,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
-# Detectar la raíz del proyecto (subir 3 niveles desde src/utils/movemesa.py)
+# Detectar la raíz del proyecto
 raiz_proyecto = Path(__file__).resolve().parent.parent.parent
 if str(raiz_proyecto) not in sys.path:
     sys.path.insert(0, str(raiz_proyecto))
 
 from src.ingest.mesaxy import MesaXY
-from src.constants import constants as c
+from src.constants.constants import TableXY  # ◄ Importación limpia de la clase de la mesa
+
 
 class ConnectAndHomeWorker(QThread):
     success_signal = pyqtSignal(object)
@@ -23,11 +24,13 @@ class ConnectAndHomeWorker(QThread):
 
     def run(self):
         try:
-            mesa_instancia = MesaXY(port=c.PORT, baudrate=c.BAUDRATE)
+            # Usamos constantes estructuradas
+            mesa_instancia = MesaXY(port=TableXY.PORT, baudrate=TableXY.BAUDRATE)
             mesa_instancia.home()
             self.success_signal.emit(mesa_instancia)
         except Exception as e:
             self.error_signal.emit(str(e))
+
 
 class MoveWorker(QThread):
     finished_signal = pyqtSignal(float, float)
@@ -66,29 +69,21 @@ class ManualControlWindow(QMainWindow):
         self.current_y = 0.0
         self.is_homed = False
 
-        # Cargar el archivo QSS externo de forma dinámica y robusta
         self.load_stylesheet()
         self.init_ui()
 
     def load_stylesheet(self):
-        """Busca y carga el archivo .qss dinámicamente desde src/ui/styles.qss"""
-        # 1. Obtenemos la carpeta actual (src/utils/)
         mi_carpeta = Path(__file__).resolve().parent
-        
-        # 2. Subimos un nivel a 'src', entramos a 'ui' y apuntamos a 'styles.qss'
         qss_path = mi_carpeta.parent / "ui" / "styles.qss"
         
-        # 3. Comprobamos si existe usando pathlib (.exists())
         if qss_path.exists():
             try:
-                # .read_text() abre, lee y cierra el archivo automáticamente en 1 sola línea
                 self.setStyleSheet(qss_path.read_text(encoding="utf-8"))
                 print(f"[QSS] Estilos cargados desde: {qss_path}")
             except Exception as e:
                 print(f"Advertencia: No se pudo leer el archivo QSS: {e}")
         else:
             print(f"Advertencia: No se encontró el archivo de estilos en: {qss_path}")
-            # Fallback estético por si el archivo no está en su sitio
             self.setStyleSheet("QMainWindow { background-color: #0a0d12; color: #e8eaf0; }")
             
     def init_ui(self):
@@ -169,7 +164,7 @@ class ManualControlWindow(QMainWindow):
         info_row = QHBoxLayout()
         lbl_step_title = QLabel("DISTANCIA DE PASO:")
         lbl_step_title.setStyleSheet("color: #8892a4; font-size: 10px; font-weight: bold; font-family: 'JetBrains Mono';")
-        self.lbl_step_val = QLabel(f"{c.DEFAULT_STEP:.2f} mm")
+        self.lbl_step_val = QLabel(f"{TableXY.DEFAULT_STEP:.2f} mm")
         self.lbl_step_val.setStyleSheet("color: #00c9a7; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono';")
         info_row.addWidget(lbl_step_title)
         info_row.addStretch()
@@ -177,8 +172,8 @@ class ManualControlWindow(QMainWindow):
         slider_layout.addLayout(info_row)
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setRange(c.STEP_MIN, c.STEP_MAX)
-        self.slider.setValue(int(c.DEFAULT_STEP * c.STEP_FACTOR))
+        self.slider.setRange(TableXY.STEP_MIN, TableXY.STEP_MAX)
+        self.slider.setValue(int(TableXY.DEFAULT_STEP * TableXY.STEP_FACTOR))
         self.slider.valueChanged.connect(self.sync_slider_label)
         self.slider.setEnabled(False)
         slider_layout.addWidget(self.slider)
@@ -190,11 +185,11 @@ class ManualControlWindow(QMainWindow):
         actions_layout.setSpacing(10)
         
         self.btn_connect = QPushButton("⚡ Conectar y Home")
-        self.btn_connect.setObjectName("btn_home")  # Vincula el estilo azul del QSS
+        self.btn_connect.setObjectName("btn_home")  
         self.btn_connect.clicked.connect(self.start_connection_process)
         
         self.btn_stop = QPushButton("■ Emergency Stop")
-        self.btn_stop.setObjectName("btn_stop")      # Vincula el estilo rojo del QSS
+        self.btn_stop.setObjectName("btn_stop")      
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.emergency_shutdown)
 
@@ -203,7 +198,7 @@ class ManualControlWindow(QMainWindow):
         main_layout.addLayout(actions_layout)
 
     def sync_slider_label(self):
-        valor_mm = self.slider.value() / c.STEP_FACTOR
+        valor_mm = self.slider.value() / TableXY.STEP_FACTOR
         self.lbl_step_val.setText(f"{valor_mm:.2f} mm")
 
     def set_ui_controls_enabled(self, enabled: bool):
@@ -249,19 +244,20 @@ class ManualControlWindow(QMainWindow):
         if not self.is_homed or not self.mesa:
             return
 
-        step_size = self.slider.value() / c.STEP_FACTOR
+        step_size = self.slider.value() / TableXY.STEP_FACTOR
         target_x = self.current_x + (dx * step_size)
         target_y = self.current_y + (dy * step_size)
 
-        if not (c.X_MIN <= target_x <= c.X_MAX):
+        # Validación de límites usando las constantes de la clase TableXY
+        if not (TableXY.X_MIN <= target_x <= TableXY.X_MAX):
             QMessageBox.warning(self, "Límite Excedido", 
-                                 f"Movimiento denegado.\nEl eje X saldría del rango seguro ({c.X_MIN} - {c.X_MAX} mm).\n"
+                                 f"Movimiento denegado.\nEl eje X saldría del rango seguro ({TableXY.X_MIN} - {TableXY.X_MAX} mm).\n"
                                  f"Posición calculada: {target_x:.2f} mm")
             return
 
-        if not (c.Y_MIN <= target_y <= c.Y_MAX):
+        if not (TableXY.Y_MIN <= target_y <= TableXY.Y_MAX):
             QMessageBox.warning(self, "Límite Excedido", 
-                                 f"Movimiento denegado.\nEl eje Y saldría del rango seguro ({c.Y_MIN} - {c.Y_MAX} mm).\n"
+                                 f"Movimiento denegado.\nEl eje Y saldría del rango seguro ({TableXY.Y_MIN} - {TableXY.Y_MAX} mm).\n"
                                  f"Posición calculada: {target_y:.2f} mm")
             return
 

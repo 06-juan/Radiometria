@@ -1,26 +1,27 @@
-import pyvisa
+# src/ingest/lockin.py
+import sys
 import time
+from pathlib import Path
+import pyvisa
 import numpy as np
 
-LASER_ON_VOLTAGE = 5
-LASER_OFF_VOLTAGE = 0.6
+raiz_proyecto = Path(__file__).resolve().parent.parent.parent
+
+if str(raiz_proyecto) not in sys.path:
+    sys.path.insert(0, str(raiz_proyecto))
+
+from src.constants.constants import Laser, LockIn
 
 class SR830:
-    def __init__(self, resource_name='GPIB0::8::INSTR', timeout=10000, tc_constante=False):
+    def __init__(self, resource_name=LockIn.RESOURCE_NAME, timeout=LockIn.TIMEOUT, tc_constante=False):
         self.rm = pyvisa.ResourceManager()
         self.inst = self.rm.open_resource(resource_name)
         self.inst.timeout = timeout
         
-        # Indica si usaremos TC fijo o automático
         self.tc_constante = tc_constante
         
-        # Mapa de frecuencias Lockin
-        self.TC_MAP = {
-            0: 10e-6, 1: 30e-6, 2: 100e-6, 3: 300e-6,
-            4: 1e-3,  5: 3e-3,  6: 10e-3,  7: 30e-3,
-            8: 100e-3, 9: 300e-3, 10: 1.0,  11: 3.0,
-            12: 10.0, 13: 30.0, 14: 100.0, 15: 300.0
-        }
+        self.TC_MAP = LockIn.TC_MAP
+        
         self.current_tc_val = 0.3
         self.tiempo_espera = 1.0
         self.current_slope_factor = 5
@@ -46,20 +47,18 @@ class SR830:
 
     def _ajustar_dinamico(self, freq):
         """Ajuste automático de TC y Slope según la frecuencia."""
-        # 1. Definir el Slope según el rango de frecuencia
-        # < 100 Hz: 24 dB/oct (index 3) | >= 100 Hz: 12 dB/oct (index 1)
         if freq < 100:
             slope_index = 3
-            self.current_slope_factor = 10 # Requiere más tiempo de asentamiento
+            self.current_slope_factor = 10 
         else:
             slope_index = 1
-            self.current_slope_factor = 7  # Es más rápido
+            self.current_slope_factor = 7  
 
         self.inst.write(f'OFSL {slope_index}')
 
-        # 2. Definir la TC (mínimo 10 ciclos y mínimo 30ms)
         periodo_objetivo = 10.0 / freq 
         indice_optimo = 15 
+
         for i in sorted(self.TC_MAP.keys()):
             if self.TC_MAP[i] >= periodo_objetivo and self.TC_MAP[i] >= 30e-3:
                 indice_optimo = i
@@ -73,11 +72,10 @@ class SR830:
         self.inst.write(f'OFLT {tc_index}')
         self.inst.write(f'OFSL {slope_index}')
         self.current_tc_val = self.TC_MAP[tc_index]
-        # Ajustamos el factor de espera según el slope manual
         self.current_slope_factor = [5, 7, 9, 10][slope_index]
 
     def get_measurements(self):
-        """SNAP? 1,2,3,4 obtiene X, Y, R, Theta de un solo golpe."""
+        """SNAP? 1,2,3,4 obtiene X, Y, R, Theta"""
         try:
             snap = self.inst.query('SNAP? 1,2,3,4').strip()
             x, y, r, phi = map(float, snap.split(','))
@@ -86,9 +84,8 @@ class SR830:
             print(f"Error en lectura: {e}")
             return None
 
-    def set_amplitude(self,voltage):
-        """Usamos el aux out 3 y una puerta and para encender y apagar el laser
-        ya que TTL out no se puede detener"""
+    def set_amplitude(self, voltage):
+        """Usamos el aux out 3 y una puerta and para encender y apagar el laser"""
         self.inst.write(f'AUXV 3, {voltage}')
         
     def close(self):
@@ -99,28 +96,12 @@ class SR830:
     def auto_gain(self):
         """Ejecuta AGAN y espera a que el hardware termine el ajuste."""
         self.inst.write("AGAN")
-        # El ajuste automático de ganancia puede tardar un par de segundos
-        # en ciclar internamente por los rangos de sensibilidad.
-        time.sleep(7.0)
+        time.sleep(LockIn.DELAYAUTOGAIN)
 
     def Reserve(self):
-        """# Ponemos modo en Low Reserve para no destruir la señal del sensor"""
+        """Ponemos modo en Low Reserve para no destruir la señal del sensor"""
         self.inst.write("RMOD 2")
-        time.sleep(1.0)
+        time.sleep(LockIn.DELAYRESERVE)
 
 if __name__ == "__main__":
-    # Ejemplo de uso:
-    try:
-        # Para el barrido XY, mejor tc_constante=True
-        lockin = SR830(tc_constante=True)
-        
-        #for f in [100, 300, 500, 700]:
-            #lockin.set_frequency(f)
-            #datos = lockin.get_measurements()
-            #print(f"Resultado a {f}Hz: {datos}")
-            
-        #lockin.close()
-        lockin.set_amplitude(LASER_ON_VOLTAGE)
-        #lockin.set_amplitude(LASER_OFF_VOLTAGE)
-    except Exception as e:
-        print(f"Falla de conexión: {e}")
+    pass
