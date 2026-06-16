@@ -1,6 +1,6 @@
-# src/movemesa.py
+# src/utils/movemesa.py
 import sys
-import os
+from pathlib import Path
 import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -10,9 +10,9 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 # Detectar la raíz del proyecto (subir 3 niveles desde src/utils/movemesa.py)
-raiz_proyecto = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if raiz_proyecto not in sys.path:
-    sys.path.insert(0, raiz_proyecto)
+raiz_proyecto = Path(__file__).resolve().parent.parent.parent
+if str(raiz_proyecto) not in sys.path:
+    sys.path.insert(0, str(raiz_proyecto))
 
 from src.ingest.mesaxy import MesaXY
 from src.constants import constants as c
@@ -72,20 +72,25 @@ class ManualControlWindow(QMainWindow):
 
     def load_stylesheet(self):
         """Busca y carga el archivo .qss dinámicamente desde src/ui/styles.qss"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        qss_path = os.path.join(base_dir, "ui", "styles.qss")
+        # 1. Obtenemos la carpeta actual (src/utils/)
+        mi_carpeta = Path(__file__).resolve().parent
         
-        if os.path.exists(qss_path):
+        # 2. Subimos un nivel a 'src', entramos a 'ui' y apuntamos a 'styles.qss'
+        qss_path = mi_carpeta.parent / "ui" / "styles.qss"
+        
+        # 3. Comprobamos si existe usando pathlib (.exists())
+        if qss_path.exists():
             try:
-                with open(qss_path, "r", encoding="utf-8") as f:
-                    self.setStyleSheet(f.read())
+                # .read_text() abre, lee y cierra el archivo automáticamente en 1 sola línea
+                self.setStyleSheet(qss_path.read_text(encoding="utf-8"))
+                print(f"[QSS] Estilos cargados desde: {qss_path}")
             except Exception as e:
                 print(f"Advertencia: No se pudo leer el archivo QSS: {e}")
         else:
             print(f"Advertencia: No se encontró el archivo de estilos en: {qss_path}")
             # Fallback estético por si el archivo no está en su sitio
             self.setStyleSheet("QMainWindow { background-color: #0a0d12; color: #e8eaf0; }")
-
+            
     def init_ui(self):
         root = QWidget()
         root.setObjectName("root")
