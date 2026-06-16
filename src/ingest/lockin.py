@@ -96,12 +96,12 @@ class SR830:
     def auto_gain(self):
         """Ejecuta AGAN y espera a que el hardware termine el ajuste."""
         self.inst.write("AGAN")
-        time.sleep(LockIn.DELAYAUTOGAIN)
+        time.sleep(LockIn.DELAY_AUTO_GAIN)
 
     def Reserve(self):
         """Ponemos modo en Low Reserve para no destruir la señal del sensor"""
         self.inst.write("RMOD 2")
-        time.sleep(LockIn.DELAYRESERVE)
+        time.sleep(LockIn.DELAY_RESERVE)
 
 if __name__ == "__main__":
     pass
