@@ -10,6 +10,7 @@ from PyQt6.QtGui import QDoubleValidator, QIntValidator
 
 from src.ui.plots.graficar_3d import Grafica3DRealTime
 from src.ui.plots.grafica_2d import Grafica2DRealTime
+from src.ui.movemesa import ManualControlWidget
 
 
 # ─────────────────────────────────────────────
@@ -245,12 +246,17 @@ class MainWindowUI(QMainWindow):
         self.tab_2d = QPushButton("Espectro Frecuencia")
         self.tab_2d.setObjectName("tab_btn")
         self.tab_2d.setProperty("active", "false")
+        self.tab_manual = QPushButton("Control Manual")
+        self.tab_manual.setObjectName("tab_btn")
+        self.tab_manual.setProperty("active", "false")
 
         self.tab_3d.clicked.connect(lambda: self._switch_tab(0))
         self.tab_2d.clicked.connect(lambda: self._switch_tab(1))
+        self.tab_manual.clicked.connect(lambda: self._switch_tab(2))
 
         tb_layout.addWidget(self.tab_3d)
         tb_layout.addWidget(self.tab_2d)
+        tb_layout.addWidget(self.tab_manual)
         tb_layout.addStretch()
 
         self.lbl_freq_chip = QLabel("f = 1000 Hz")
@@ -284,6 +290,10 @@ class MainWindowUI(QMainWindow):
         layout_2d.addWidget(self._wrap_plot_card(self.plot_mag_2d,  "AMPLITUD  R (V)",    "mag2d_meta"))
         layout_2d.addWidget(self._wrap_plot_card(self.plot_fase_2d, "FASE  φ (°)",         "fase2d_meta"))
         self.stack_graficas.addWidget(widget_2d)
+
+        # Panel Control Manual
+        self.manual_control = ManualControlWidget()
+        self.stack_graficas.addWidget(self.manual_control)
 
         layout.addWidget(self.stack_graficas, 1)
         layout.addWidget(self._build_stats_bar())
@@ -377,10 +387,10 @@ class MainWindowUI(QMainWindow):
         self.stack_graficas.setCurrentIndex(idx)
         self.tab_3d.setProperty("active", "true" if idx == 0 else "false")
         self.tab_2d.setProperty("active", "true" if idx == 1 else "false")
-        self.tab_3d.style().unpolish(self.tab_3d)
-        self.tab_3d.style().polish(self.tab_3d)
-        self.tab_2d.style().unpolish(self.tab_2d)
-        self.tab_2d.style().polish(self.tab_2d)
+        self.tab_manual.setProperty("active", "true" if idx == 2 else "false")
+        for tab in (self.tab_3d, self.tab_2d, self.tab_manual):
+            tab.style().unpolish(tab)
+            tab.style().polish(tab)
 
     def _set_hw_status(self, state: str, msg: str = ""):
         colors = {"disconnected": "#ef4444", "pending": "#f59e0b", "connected": "#22c55e", "measuring": "#00c9a7"}

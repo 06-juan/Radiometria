@@ -92,6 +92,11 @@ void processCommand(String cmd) {
     motorsEnabled = true;
     Serial.println("OK");
 
+  } else if (cmd == "ZERO") {
+    stepperX.setCurrentPosition(0);
+    stepperY.setCurrentPosition(0);
+    Serial.println("OK");
+
   } else if (cmd == "EN_OFF") {
     digitalWrite(ENABLE_PIN, HIGH); // Deshabilitar drivers
     motorsEnabled = false;

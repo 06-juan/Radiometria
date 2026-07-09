@@ -23,6 +23,8 @@ class MesaXY:
             raise RuntimeError(f"Error de conexión Arduino: {e}")
         
         self._abort = False
+        self.origin_offset_x = 0.0
+        self.origin_offset_y = 0.0
         time.sleep(1) 
         self._wait_for_ready()
 
@@ -137,6 +139,17 @@ class MesaXY:
     def home(self):
         self._send_command("HOME")
         self._wait_for_ready()
+        self.origin_offset_x = 0.0
+        self.origin_offset_y = 0.0
+
+    def set_origin(self, logical_x=0.0, logical_y=0.0):
+        """Zero the position counter at current location and track offset."""
+        self._send_command("ZERO")
+        response = self.ser.readline().decode('utf-8').strip()
+        if response != "OK":
+            raise RuntimeError(f"set_origin failed: {response}")
+        self.origin_offset_x += logical_x
+        self.origin_offset_y += logical_y
 
     def close(self):
         if self.ser.is_open: 
