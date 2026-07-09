@@ -3,87 +3,82 @@ Control de Mesa XY con Lock-in Amplifier (SR830)
 
 1. Descripción general
 ----------------------
+Este sistema integra una estación experimental automatizada de radiometría fototérmica. Controla una mesa XY motorizada (vía Arduino) de forma sincronizada con un amplificador Lock-in Stanford Research SR830 y un láser modulado, para realizar barridos espaciales y de frecuencia de una muestra.
 
-Este sistema integra una mesa XY motorizada controlada por Arduino y un lock-in amplifier Stanford Research SR830 para realizar barridos espaciales de una señal medida.  
-La comunicación se realiza mediante:
-- USB/Serial entre PC y Arduino (control de motores).  
-- GPIB entre PC y SR830 (mediciones en fase/cuadratura).  
-
-El software en Python coordina el movimiento, adquiere datos y genera visualizaciones 3D de las magnitudes medidas.
+Características principales:
+- Interfaz Gráfica (GUI): Desarrollada en PyQt6 para control manual, orquestación de experimentos y visualización en tiempo real.
+- Procesamiento de Datos: Uso de base de datos en memoria (DuckDB) para la ingesta en tiempo real y almacenamiento eficiente en formato columnar (Parquet).
+- Concurrencia: Arquitectura basada en hilos (QThread) para evitar bloqueos en la interfaz gráfica durante la comunicación serial y GPIB.
+- Visualización: Gráficos 2D y 3D en tiempo real (Fase y Magnitud) actualizados dinámicamente durante el barrido.
 
 2. Estructura de archivos
 -------------------------
+El código está organizado bajo una arquitectura modular en la carpeta src/:
 
-graficar_3d.py     -> Funciones de graficación 3D (R, φ)  
-graficar_2d.py     -> Funciones de graficación 2D (X, R, φ)  
-lockin.py          -> Comunicación con lock-in SR830 vía PyVISA  
-mesaxy.py          -> Clase MesaXY: control, barrido y adquisición  
-MesaXYSerial.ino   -> Firmware Arduino para control de motores  
-requirements.txt   -> Dependencias de Python  
-README.txt         -> Documentación técnica  
+src/constants/constants.py   -> Configuración global (Puertos, Delays, GPIB, etc.)
+src/ingest/data_manager.py    -> Gestión de DuckDB, exportación a Parquet y memorias
+src/ingest/lockin.py          -> Clase SR830: Comunicación SCPI vía PyVISA
+src/ingest/mesaxy.py          -> Clase MesaXY: Control Serial con Arduino
+src/ui/orchestrator.py        -> Ventana Principal (Orquestador de hilos y UI)
+src/ui/gui.py                 -> Diseño visual base de la interfaz (PyQt6)
+src/ui/movemesa.py            -> Ventana standalone para control manual de la mesa
+src/ui/workers.py             -> Hilos (QThreads) para operaciones asíncronas
+src/ui/plots/grafica_2d.py   -> Gráficos 2D en tiempo real
+src/ui/plots/graficar_3d.py   -> Superficies 3D en tiempo real
+firmware/MesaXYSerial.ino     -> Firmware Arduino para control de motores paso a paso
+requirements.txt              -> Dependencias de Python
+main.py                       -> Punto de entrada del programa
 
 3. Dependencias de software
 ---------------------------
-
 Python:
-- Python = 3.12.10
+- Versión: Python 3.12+
 - Instalar dependencias con:
 
     pip install -r requirements.txt
 
-Arduino:
-- IDE de Arduino 1.8.x o Arduino IDE 2.x
-- Librerías estándar (Serial).
-- Si se emplean drivers de motores adicionales (ej. AccelStepper), deben instalarse previamente en el IDE.
-
 Controladores GPIB (National Instruments):
-- Para que pyvisa detecte el SR830 mediante GPIB es necesario instalar NI-VISA.
+- Para que pyvisa detecte el SR830 mediante GPIB es obligatorio instalar NI-VISA.
 - Descargar desde la página oficial de National Instruments:
   https://www.ni.com/en-us/support/downloads/drivers/download.ni-visa.html
-- Es obligatorio instalar los drivers de National Instruments:
+- Es obligatorio instalar los siguientes paquetes desde NI Package Manager:
   * NI-VISA
   * NI-488.2 (controlador GPIB)
-- Ambos pueden descargarse e instalarse desde NI Package Manager.
 - Instalar y reiniciar el sistema antes de ejecutar los scripts de Python.
 
 Controladores Laser Flex:
-- Crear una maquina virtual a 32bits probado en windows xp
-- Instalar drivers memoria que viene con el Laser
-- Conectarlo por USB y configurarlo
+- Crear una maquina virtual a 32bits probado en windows xp.
+- Instalar drivers de memoria que vienen con el Laser.
+- Conectarlo por USB, derivar el dispositivo a la maquina virtual y configurarlo.
+
+Arduino:
+- IDE de Arduino 1.8.x o Arduino IDE 2.x
+- Librerías estándar (Serial) y de control de motores paso a paso si fuesen requeridas por el firmware.
 
 4. Configuración del hardware
 -----------------------------
+Todas las variables críticas de hardware están centralizadas en src/constants/constants.py.
 
 Conexiones:
-- Arduino -> PC: USB (puerto serie).
+- Arduino -> PC: USB (puerto serie). Por defecto: PORT = 'COM3' y BAUDRATE = 9600.
 - Mesa XY: conectada a los pines de control definidos en MesaXYSerial.ino.
-- Lock-in SR830 -> PC: mediante GPIB (recomendado adaptador GPIB-USB National Instruments).
-
-Parámetros clave:
-- Puerto serie Arduino: configurable en mesaxy.py (COM6 en Windows, /dev/ttyUSB0 en Linux).
-- Dirección VISA del lock-in: definida en lockin.py (GPIB0::8::INSTR por defecto).
+- Lock-in SR830 -> PC: mediante GPIB (dirección VISA por defecto: GPIB0::8::INSTR).
+- Láser: Modulado mediante la salida auxiliar del Lock-in (Aux Out 3).
 
 5. Procedimiento de operación
 -----------------------------
-
-1. Programación del Arduino
-   - Abrir MesaXYSerial.ino en el IDE.
+1. Programación del Arduino:
+   - Abrir firmware/MesaXYSerial.ino en el IDE.
    - Seleccionar placa y puerto.
-   - Compilar y cargar firmware.
-   - Al iniciar, el Arduino enviará READY por puerto serie.
+   - Compilar y cargar el firmware. Al iniciar, el Arduino enviará READY por puerto serie.
 
-2. Inicialización en Python
-   - Ejecutar main.py.
+2. Inicialización del Software:
+   - Encender el Lock-in SR830.
+   - Ejecutar el programa principal desde la terminal:
+     python main.py
 
-3. Adquisición de datos
-   - Definir barrido con sweep_and_measure(x_max, y_max, res).
-   - El res minimo para la configuracion del laboratorio es de 5 micrometros
-   - El Arduino mueve la mesa a cada punto y notifica con POS x y.
-   - En cada posición, Python consulta al lock-in mediante el comando SNAP? 1,2,3,4.
-   - Se almacenan X, Y, R, φ.
-
-4. Visualización de resultados
-   - Se generan tres superficies 2D (X, R, φ)
-   - Se generan dos superficies 3D (R, φ).
-
-
+3. Operación en la Interfaz (GUI):
+   - Conexión: Usar el botón de Conectar/Homing para establecer la comunicación inicial con el hardware y calibrar el origen mecánico.
+   - Control Manual: Se puede abrir la sección de control manual para posicionar el láser o calibrar desplazamientos de desfase (offsets).
+   - Barrido Automatizado: Configurar los límites espaciales (X, Y) y los rangos de frecuencia del experimento. La resolución mínima física del laboratorio es de 5 micrómetros.
+   - Visualización y Almacenamiento: El sistema genera una base de datos temporal en memoria (DuckDB) para actualizar de forma asíncrona las gráficas 2D y superficies 3D en vivo. Al finalizar la tarea, exporta automáticamente los datos depurados a la carpeta data/raw en formato Parquet.

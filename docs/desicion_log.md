@@ -1,4 +1,7 @@
-5/0/26
+1/07/26
+Implementacion ajuste muestra desde gui con posicion cero definida por el usuario, partiendo de alli los barridos
+
+5/03/26
 ponemos los ejes con configuracion logaritmica y lineal para un mejor analisis de los datos en las graficas 2d, añadimos una funcion al arduino para un futuro barrido multipunto de frecuencia y promediar en el tamaño de la muestra, esta funcion se podria reutilizar en el marcado del area, con un  voltaje de  1.6  o similar para que el laser alumbre super bajo.
 
 25/02/26

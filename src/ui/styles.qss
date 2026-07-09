@@ -373,3 +373,20 @@ QPushButton#btn_laser:disabled {
     border-color: rgba(255,255,255,0.04);
     background-color: #0e1118;
 }
+
+/* ── Boton Origen ── */
+QPushButton#btn_origen {
+    border-color: rgba(168,85,247,0.3);
+    color: #a48ee8;
+    padding: 9px 12px;
+}
+QPushButton#btn_origen:hover {
+    background-color: rgba(168,85,247,0.1);
+    border-color: rgba(168,85,247,0.6);
+    color: #c4b5fd;
+}
+QPushButton#btn_origen:disabled {
+    color: #3a4155;
+    border-color: rgba(255,255,255,0.04);
+    background-color: #0e1118;
+}

@@ -10,7 +10,7 @@ raiz_proyecto = Path(__file__).resolve().parent.parent.parent
 if str(raiz_proyecto) not in sys.path:
     sys.path.insert(0, str(raiz_proyecto))
 
-from src.constants.constants import Laser, LockIn
+from src.constants.constants import LockIn
 
 class SR830:
     def __init__(self, resource_name=LockIn.RESOURCE_NAME, timeout=LockIn.TIMEOUT, tc_constante=False):

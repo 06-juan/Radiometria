@@ -7,13 +7,7 @@ from src.ingest.data_manager import DataManager
 from src.ui.gui import MainWindowUI
 from src.ui.workers import HomeWorker, WorkerThread, CruzWorkerThread, ConnectWorker
 
-# Asegúrate de importar tus constantes del láser si cambian de ubicación
-# Nota: En tu archivo original no aparecía el import de 'Laser' pero sí se usaba Laser.OFF_VOLTAGE.
-# Asumo que están en src.ingest.mesaxy o en constantes.
-try:
-    from src.ingest.mesaxy import LASER_ON_VOLTAGE as ON_VOLTAGE, LASER_OFF_VOLTAGE as OFF_VOLTAGE
-except ImportError:
-    ON_VOLTAGE, OFF_VOLTAGE = 5.0, 0.0  # Valores de resguardo si no se encuentran
+from src.constants.constants import TableXY, Laser
 
 
 class MeasurementOrchestrator(MainWindowUI):
@@ -88,11 +82,11 @@ class MeasurementOrchestrator(MainWindowUI):
             return
         try:
             if self.btn_laser.isChecked():
-                self.lockin.set_amplitude(ON_VOLTAGE)
+                self.lockin.set_amplitude(Laser.ON_VOLTAGE)
                 self.btn_laser.setText("◉  ON")
                 self._status_bar.showMessage("Laser encendido")
             else:
-                self.lockin.set_amplitude(OFF_VOLTAGE)
+                self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
                 self.btn_laser.setText("◉  Laser")
                 self._status_bar.showMessage("Laser apagado")
         except Exception as e:
@@ -146,6 +140,8 @@ class MeasurementOrchestrator(MainWindowUI):
         self.btn_measure.setEnabled(True)
         self.btn_cruz.setEnabled(True)
         self.btn_laser.setEnabled(True)
+        self.manual_control.set_mesa(self.mesa)
+        self.manual_control.set_connected(True)
 
         if self.pending_task:
             task = self.pending_task
@@ -175,6 +171,11 @@ class MeasurementOrchestrator(MainWindowUI):
         self.current_freq = self.slider_freq.value()
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
+
+        ox = self.mesa.origin_offset_x
+        oy = self.mesa.origin_offset_y
+        x_max = max(0.0, min(x_max, TableXY.X_MAX) - ox)
+        y_max = max(0.0, min(y_max, TableXY.Y_MAX) - oy)
 
         self.plotter_fase.inicializar_malla(x_max, y_max, self.res_actual)
         self.plotter_mag.inicializar_malla(x_max, y_max, self.res_actual)
@@ -230,6 +231,11 @@ class MeasurementOrchestrator(MainWindowUI):
         x_max = self.slider_x.value() / 10.0
         y_max = self.slider_y.value() / 10.0
 
+        ox = self.mesa.origin_offset_x
+        oy = self.mesa.origin_offset_y
+        x_max = max(0.0, min(x_max, TableXY.X_MAX) - ox)
+        y_max = max(0.0, min(y_max, TableXY.Y_MAX) - oy)
+
         self.toggle_inputs(False)
         self.btn_laser.setEnabled(False)
 
@@ -270,7 +276,7 @@ class MeasurementOrchestrator(MainWindowUI):
             active_worker.wait(2000)
 
         if self.lockin:
-            try: self.lockin.set_amplitude(OFF_VOLTAGE)
+            try: self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
             except Exception as e: print(f"Error apagado láser: {e}")
 
         self.db.finalizar_experimento()
@@ -284,6 +290,9 @@ class MeasurementOrchestrator(MainWindowUI):
             try: self.lockin.close()
             except: pass
             self.lockin = None
+
+        self.manual_control.set_mesa(None)
+        self.manual_control.set_connected(False)
 
         self._set_hw_status("disconnected", "⚠️ Medición Abortada - Hardware Liberado")
         self.btn_home.setText("↑  Ir a Home")
@@ -316,7 +325,7 @@ class MeasurementOrchestrator(MainWindowUI):
         self._abort = True
         if self.lockin:
             try: 
-                self.lockin.set_amplitude(OFF_VOLTAGE)
+                self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
                 self.lockin.close()
             except: pass
         if self.mesa:
@@ -324,6 +333,7 @@ class MeasurementOrchestrator(MainWindowUI):
                 self.mesa.stop_current_operation()
                 self.mesa.close()
             except: pass
+        self.manual_control.set_mesa(None)
         self.db.finalizar_experimento()
         event.accept()
 
