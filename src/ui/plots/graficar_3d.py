@@ -130,6 +130,11 @@ class Grafica3DRealTime(QWidget):
         self.inicializar_malla(10.0, 10.0, 1.0)
 
     def inicializar_malla(self, x_max: float, y_max: float, res: float):
+        # Protección contra dimensiones inválidas
+        x_max = max(float(x_max), 0.1)
+        y_max = max(float(y_max), 0.1)
+        res = max(float(res), 0.001)
+
         self.x_max = x_max
         self.y_max = y_max
         self.res   = res

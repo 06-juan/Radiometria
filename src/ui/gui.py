@@ -11,6 +11,7 @@ from PyQt6.QtGui import QDoubleValidator, QIntValidator
 from src.ui.plots.graficar_3d import Grafica3DRealTime
 from src.ui.plots.grafica_2d import Grafica2DRealTime
 from src.ui.movemesa import ManualControlWidget
+from src.constants.constants import TableXY
 
 
 # ─────────────────────────────────────────────
@@ -114,10 +115,10 @@ class MainWindowUI(QMainWindow):
         params_layout.setContentsMargins(14, 0, 14, 6)
         params_layout.setSpacing(1)
 
-        self.slider_x,   self.input_x    = self._param_control(params_layout, "Eje X máx (mm)",    10, 100,  50, 10,   0)
-        self.slider_y,   self.input_y    = self._param_control(params_layout, "Eje Y máx (mm)",    10, 100,  50, 10,   0)
-        self.slider_res, self.input_res  = self._param_control(params_layout, "Resolución (mm)",    10, 1000, 1000, 1000, 3)
-        self.slider_freq, self.input_freq = self._param_control(params_layout, "Frecuencia (Hz)",   1, 5000, 1000, 1,    0)
+        self.slider_x,   self.input_x    = self._param_control(params_layout, "Eje X máx (mm)",    1, int(TableXY.X_MAX),  10, 1, 0)
+        self.slider_y,   self.input_y    = self._param_control(params_layout, "Eje Y máx (mm)",    1, int(TableXY.Y_MAX),  10, 1, 0)
+        self.slider_res, self.input_res  = self._param_control(params_layout, "Resolución (mm)",    1, 100,  10, 100, 2, use_float=True)
+        self.slider_freq, self.input_freq = self._param_control(params_layout, "Frecuencia (Hz)",   1, 5000, 1000, 1, 0)
         layout.addWidget(params_frame)
         params_layout.addSpacing(4)
 
@@ -240,23 +241,23 @@ class MainWindowUI(QMainWindow):
         tb_layout.setContentsMargins(8, 0, 16, 0)
         tb_layout.setSpacing(0)
 
-        self.tab_3d = QPushButton("Mapa XY — 3D")
+        self.tab_manual = QPushButton("Movimiento")
+        self.tab_manual.setObjectName("tab_btn")
+        self.tab_manual.setProperty("active", "true")
+        self.tab_3d = QPushButton("Medición 3D")
         self.tab_3d.setObjectName("tab_btn")
-        self.tab_3d.setProperty("active", "true")
-        self.tab_2d = QPushButton("Espectro Frecuencia")
+        self.tab_3d.setProperty("active", "false")
+        self.tab_2d = QPushButton("Medición Cruz")
         self.tab_2d.setObjectName("tab_btn")
         self.tab_2d.setProperty("active", "false")
-        self.tab_manual = QPushButton("Control Manual")
-        self.tab_manual.setObjectName("tab_btn")
-        self.tab_manual.setProperty("active", "false")
 
-        self.tab_3d.clicked.connect(lambda: self._switch_tab(0))
-        self.tab_2d.clicked.connect(lambda: self._switch_tab(1))
-        self.tab_manual.clicked.connect(lambda: self._switch_tab(2))
+        self.tab_manual.clicked.connect(lambda: self._switch_tab(0))
+        self.tab_3d.clicked.connect(lambda: self._switch_tab(1))
+        self.tab_2d.clicked.connect(lambda: self._switch_tab(2))
 
+        tb_layout.addWidget(self.tab_manual)
         tb_layout.addWidget(self.tab_3d)
         tb_layout.addWidget(self.tab_2d)
-        tb_layout.addWidget(self.tab_manual)
         tb_layout.addStretch()
 
         self.lbl_freq_chip = QLabel("f = 1000 Hz")
@@ -270,6 +271,10 @@ class MainWindowUI(QMainWindow):
         # Contenedor de Gráficos (Stack)
         self.stack_graficas = QStackedWidget()
         self.stack_graficas.setContentsMargins(16, 16, 16, 8)
+
+        # Panel Control Manual
+        self.manual_control = ManualControlWidget()
+        self.stack_graficas.addWidget(self.manual_control)
 
         # Panel 3D RealTime
         widget_3d = QWidget()
@@ -290,10 +295,6 @@ class MainWindowUI(QMainWindow):
         layout_2d.addWidget(self._wrap_plot_card(self.plot_mag_2d,  "AMPLITUD  R (V)",    "mag2d_meta"))
         layout_2d.addWidget(self._wrap_plot_card(self.plot_fase_2d, "FASE  φ (°)",         "fase2d_meta"))
         self.stack_graficas.addWidget(widget_2d)
-
-        # Panel Control Manual
-        self.manual_control = ManualControlWidget()
-        self.stack_graficas.addWidget(self.manual_control)
 
         layout.addWidget(self.stack_graficas, 1)
         layout.addWidget(self._build_stats_bar())
@@ -345,14 +346,28 @@ class MainWindowUI(QMainWindow):
         self.stat_estado = stat("ESTADO")
         return bar
 
-    def _param_control(self, layout, nombre, min_v, max_v, init_v, factor, decimales):
+    def _param_control(self, layout, nombre, min_v, max_v, init_v, factor, decimales, use_float=False):
         header = QHBoxLayout()
         header.setSpacing(6)
         lbl = make_label(nombre, "param_name")
         header.addWidget(lbl)
         header.addStretch()
 
-        line_edit = QLineEdit(f"{init_v / factor:.{decimales}f}")
+        if use_float:
+            display_val = init_v / factor
+            line_edit = QLineEdit(f"{display_val:.{decimales}f}")
+            min_display = min_v / factor
+            max_display = max_v / factor
+            v = QDoubleValidator(min_display, max_display, decimales)
+            v.setNotation(QDoubleValidator.Notation.StandardNotation)
+            line_edit.setValidator(v)
+        else:
+            display_val = int(init_v / factor)
+            line_edit = QLineEdit(str(display_val))
+            min_display = int(min_v / factor)
+            max_display = int(max_v / factor)
+            line_edit.setValidator(QIntValidator(min_display, max_display))
+
         line_edit.setObjectName("param_value")
         line_edit.setFixedWidth(65)
         line_edit.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -367,15 +382,26 @@ class MainWindowUI(QMainWindow):
         layout.addSpacing(2)
 
         def slider_a_texto():
-            line_edit.setText(f"{slider.value() / factor:.{decimales}f}")
+            if use_float:
+                line_edit.setText(f"{slider.value() / factor:.{decimales}f}")
+            else:
+                line_edit.setText(str(int(slider.value() / factor)))
             if nombre.startswith("Frecuencia"):
                 self.lbl_freq_chip.setText(f"f = {slider.value()} Hz")
 
         def texto_a_slider():
             try:
-                v = max(min_v / factor, min(max_v / factor, float(line_edit.text().replace(',', '.'))))
-                slider.setValue(int(v * factor))
-                line_edit.setText(f"{v:.{decimales}f}")
+                raw = line_edit.text().replace(',', '.')
+                if use_float:
+                    v = float(raw)
+                    v = max(min_display, min(max_display, v))
+                    slider.setValue(int(round(v * factor)))
+                    line_edit.setText(f"{v:.{decimales}f}")
+                else:
+                    v = int(raw)
+                    v = max(min_display, min(max_display, v))
+                    slider.setValue(v * factor)
+                    line_edit.setText(str(v))
             except ValueError:
                 slider_a_texto()
 
@@ -385,10 +411,10 @@ class MainWindowUI(QMainWindow):
 
     def _switch_tab(self, idx):
         self.stack_graficas.setCurrentIndex(idx)
-        self.tab_3d.setProperty("active", "true" if idx == 0 else "false")
-        self.tab_2d.setProperty("active", "true" if idx == 1 else "false")
-        self.tab_manual.setProperty("active", "true" if idx == 2 else "false")
-        for tab in (self.tab_3d, self.tab_2d, self.tab_manual):
+        self.tab_manual.setProperty("active", "true" if idx == 0 else "false")
+        self.tab_3d.setProperty("active", "true" if idx == 1 else "false")
+        self.tab_2d.setProperty("active", "true" if idx == 2 else "false")
+        for tab in (self.tab_manual, self.tab_3d, self.tab_2d):
             tab.style().unpolish(tab)
             tab.style().polish(tab)
 
