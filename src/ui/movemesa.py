@@ -1,6 +1,5 @@
 # src/ui/movemesa.py
 import sys
-import time
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -18,11 +17,29 @@ from src.constants.constants import TableXY
 
 
 class ConnectAndHomeWorker(QThread):
+    """
+    Hilo que conecta la mesa XY y ejecuta homing.
+
+    Si sim_mode=True, usa MesaXYSimulator en lugar del Arduino real.
+    """
+
     success_signal = pyqtSignal(object)
-    error_signal   = pyqtSignal(str)
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, sim_mode=False):
+        super().__init__()
+        self.sim_mode = sim_mode
 
     def run(self):
         try:
+            if self.sim_mode:
+                from src.ingest.simulador import MesaXYSimulator
+
+                mesa_instancia = MesaXYSimulator()
+                mesa_instancia.home()
+                self.success_signal.emit(mesa_instancia)
+                return
+
             mesa_instancia = MesaXY(port=TableXY.PORT, baudrate=TableXY.BAUDRATE)
             mesa_instancia.home()
             self.success_signal.emit(mesa_instancia)
@@ -42,6 +59,13 @@ class MoveWorker(QThread):
 
     def run(self):
         try:
+            # Simulador: move_to() maneja el movimiento directamente
+            if hasattr(self.mesa, 'move_to') and not hasattr(self.mesa, 'ser'):
+                self.mesa.move_to(self.target_x, self.target_y)
+                self.finished_signal.emit(self.target_x, self.target_y)
+                return
+
+            # Hardware real: protocolo serial con Arduino
             self.mesa._send_command(f"MOVE {self.target_x:.3f} {self.target_y:.3f}")
             while True:
                 if self.mesa.ser.in_waiting:
@@ -57,7 +81,7 @@ class MoveWorker(QThread):
 
 
 class ManualControlWidget(QWidget):
-    """Reusable widget for manual XY table control. Embed or use standalone."""
+    """Widget reutilizable para control manual XY. Se puede embeder o usar standalone."""
 
     origen_signal = pyqtSignal(float, float)
 
@@ -67,6 +91,7 @@ class ManualControlWidget(QWidget):
         self.current_x = 0.0
         self.current_y = 0.0
         self.is_homed = False
+        self.sim_mode = False
         self._init_ui()
 
     def _init_ui(self):
@@ -81,9 +106,9 @@ class ManualControlWidget(QWidget):
         coord_layout = QHBoxLayout(coord_card)
         coord_layout.setContentsMargins(14, 12, 14, 12)
 
-        self.lbl_x = QLabel("X: — mm")
+        self.lbl_x = QLabel("X: \u2014 mm")
         self.lbl_x.setStyleSheet("color: #00c9a7; font-size: 16px; font-family: 'JetBrains Mono', monospace; font-weight: bold;")
-        self.lbl_y = QLabel("Y: — mm")
+        self.lbl_y = QLabel("Y: \u2014 mm")
         self.lbl_y.setStyleSheet("color: #00c9a7; font-size: 16px; font-family: 'JetBrains Mono', monospace; font-weight: bold;")
 
         coord_layout.addWidget(self.lbl_x)
@@ -121,10 +146,10 @@ class ManualControlWidget(QWidget):
             btn.setFont(QFont("Arial", 16, QFont.Weight.Bold))
             btn.setEnabled(False)
 
-        self.btn_up.clicked.connect(lambda: self.trigger_move(0, 1))
-        self.btn_down.clicked.connect(lambda: self.trigger_move(0, -1))
-        self.btn_left.clicked.connect(lambda: self.trigger_move(-1, 0))
-        self.btn_right.clicked.connect(lambda: self.trigger_move(1, 0))
+        self.btn_up.clicked.connect(lambda: self.trigger_move(0, -1))
+        self.btn_down.clicked.connect(lambda: self.trigger_move(0, 1))
+        self.btn_left.clicked.connect(lambda: self.trigger_move(1, 0))
+        self.btn_right.clicked.connect(lambda: self.trigger_move(-1, 0))
 
         pad_layout.addWidget(self.btn_up, 0, 1, Qt.AlignmentFlag.AlignCenter)
         pad_layout.addWidget(self.btn_left, 1, 0, Qt.AlignmentFlag.AlignCenter)
@@ -163,25 +188,9 @@ class ManualControlWidget(QWidget):
         layout.addWidget(origen_btn)
         self.btn_origen = origen_btn
 
-        actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(10)
-
-        self.btn_connect = QPushButton("\u26a1 Conectar y Home")
-        self.btn_connect.setObjectName("btn_home")
-        self.btn_connect.clicked.connect(self.start_connection_process)
-
-        self.btn_stop = QPushButton("\u25a0 Emergency Stop")
-        self.btn_stop.setObjectName("btn_stop")
-        self.btn_stop.setEnabled(False)
-        self.btn_stop.clicked.connect(self.emergency_shutdown)
-
-        actions_layout.addWidget(self.btn_connect, 1)
-        actions_layout.addWidget(self.btn_stop, 1)
-        layout.addLayout(actions_layout)
-
         layout.addStretch()
 
-    # ─── API pública para el orquestador ───
+    # ─── API publica para el orquestador ───
 
     def set_mesa(self, mesa):
         self.mesa = mesa
@@ -198,15 +207,9 @@ class ManualControlWidget(QWidget):
         if connected:
             self.hw_dot.setStyleSheet("color: #22c55e; font-size: 12px;")
             self.hw_text.setText("Mesa Lista y Calibrada")
-            self.btn_connect.setText("\u2713 Conectado")
-            self.btn_connect.setEnabled(False)
-            self.btn_stop.setEnabled(True)
         else:
             self.hw_dot.setStyleSheet("color: #ef4444; font-size: 12px;")
             self.hw_text.setText("Mesa Desconectada")
-            self.btn_connect.setText("\u26a1 Conectar y Home")
-            self.btn_connect.setEnabled(True)
-            self.btn_stop.setEnabled(False)
 
     def set_position(self, x: float, y: float):
         self.current_x = x
@@ -230,30 +233,6 @@ class ManualControlWidget(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"No se pudo establecer origen: {e}")
 
-    def start_connection_process(self):
-        self.btn_connect.setEnabled(False)
-        self.btn_connect.setText("Estableciendo...")
-        self.hw_dot.setStyleSheet("color: #f59e0b;")
-        self.hw_text.setText("Buscando hardware y alineando Home...")
-
-        self.conn_worker = ConnectAndHomeWorker()
-        self.conn_worker.success_signal.connect(self._on_connection_success)
-        self.conn_worker.error_signal.connect(self._on_connection_error)
-        self.conn_worker.start()
-        self.btn_stop.setEnabled(True)
-
-    def _on_connection_success(self, mesa_instancia):
-        self.mesa = mesa_instancia
-        self.set_connected(True)
-        self.set_position(0.0, 0.0)
-
-    def _on_connection_error(self, err_msg):
-        self.hw_dot.setStyleSheet("color: #ef4444;")
-        self.hw_text.setText("Fallo de conexión")
-        self.btn_connect.setEnabled(True)
-        self.btn_connect.setText("\u26a1 Conectar y Home")
-        QMessageBox.critical(self, "Error de Inicializaci\u00f3n", f"No se pudo enlazar el hardware:\n{err_msg}")
-
     def trigger_move(self, dx, dy):
         if not self.is_homed or not self.mesa:
             return
@@ -262,14 +241,14 @@ class ManualControlWidget(QWidget):
         target_y = self.current_y + (dy * step_size)
 
         if not (TableXY.X_MIN <= target_x <= TableXY.X_MAX):
-            QMessageBox.warning(self, "L\u00edmite Excedido",
-                                f"Movimiento denegado.\nEl eje X saldr\u00eda del rango seguro ({TableXY.X_MIN} - {TableXY.X_MAX} mm).\n"
-                                f"Posici\u00f3n calculada: {target_x:.2f} mm")
+            QMessageBox.warning(self, "Limite Excedido",
+                                f"Movimiento denegado.\nEl eje X saldria del rango seguro ({TableXY.X_MIN} - {TableXY.X_MAX} mm).\n"
+                                f"Posicion calculada: {target_x:.2f} mm")
             return
         if not (TableXY.Y_MIN <= target_y <= TableXY.Y_MAX):
-            QMessageBox.warning(self, "L\u00edmite Excedido",
-                                f"Movimiento denegado.\nEl eje Y saldr\u00eda del rango seguro ({TableXY.Y_MIN} - {TableXY.Y_MAX} mm).\n"
-                                f"Posici\u00f3n calculada: {target_y:.2f} mm")
+            QMessageBox.warning(self, "Limite Excedido",
+                                f"Movimiento denegado.\nEl eje Y saldria del rango seguro ({TableXY.Y_MIN} - {TableXY.Y_MAX} mm).\n"
+                                f"Posicion calculada: {target_y:.2f} mm")
             return
 
         self._set_controls_enabled(False)
@@ -288,7 +267,7 @@ class ManualControlWidget(QWidget):
     def _on_move_error(self, err_msg):
         self.hw_text.setText("Error posicional")
         self._set_controls_enabled(True)
-        QMessageBox.warning(self, "Error de Trayecto", f"La instrucci\u00f3n fall\u00f3 en el controlador:\n{err_msg}")
+        QMessageBox.warning(self, "Error de Trayecto", f"La instruccion fallo en el controlador:\n{err_msg}")
 
     def _set_controls_enabled(self, enabled: bool):
         self.btn_up.setEnabled(enabled)
@@ -297,19 +276,6 @@ class ManualControlWidget(QWidget):
         self.btn_right.setEnabled(enabled)
         self.slider.setEnabled(enabled)
         self.btn_origen.setEnabled(enabled)
-
-    def emergency_shutdown(self):
-        try:
-            if self.mesa:
-                self.mesa.stop_current_operation()
-        except:
-            pass
-        self._set_controls_enabled(False)
-        self.is_homed = False
-        self.btn_connect.setEnabled(True)
-        self.btn_connect.setText("\u26a1 Conectar y Home")
-        self.hw_dot.setStyleSheet("color: #ef4444;")
-        self.hw_text.setText("Parada de Emergencia activada.")
 
 
 class ManualControlWindow(QMainWindow):

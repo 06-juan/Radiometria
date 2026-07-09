@@ -10,6 +10,7 @@ Características principales:
 - Procesamiento de Datos: Uso de base de datos en memoria (DuckDB) para la ingesta en tiempo real y almacenamiento eficiente en formato columnar (Parquet).
 - Concurrencia: Arquitectura basada en hilos (QThread) para evitar bloqueos en la interfaz gráfica durante la comunicación serial y GPIB.
 - Visualización: Gráficos 2D y 3D en tiempo real (Fase y Magnitud) actualizados dinámicamente durante el barrido.
+- Modo Simulación: Permite ejecutar la aplicación sin hardware real para debugging y desarrollo. Se activa con `python main.py --sim` o desde un diálogo cuando falla la conexión.
 
 2. Estructura de archivos
 -------------------------
@@ -19,9 +20,10 @@ src/constants/constants.py   -> Configuración global (Puertos, Delays, GPIB, et
 src/ingest/data_manager.py    -> Gestión de DuckDB, exportación a Parquet y memorias
 src/ingest/lockin.py          -> Clase SR830: Comunicación SCPI vía PyVISA
 src/ingest/mesaxy.py          -> Clase MesaXY: Control Serial con Arduino
+src/ingest/simulador.py       -> MesaXYSimulator y SR830Simulator (modo debug)
 src/ui/orchestrator.py        -> Ventana Principal (Orquestador de hilos y UI)
 src/ui/gui.py                 -> Diseño visual base de la interfaz (PyQt6)
-src/ui/movemesa.py            -> Ventana standalone para control manual de la mesa
+src/ui/movemesa.py            -> Widget reutilizable para control manual XY
 src/ui/workers.py             -> Hilos (QThreads) para operaciones asíncronas
 src/ui/plots/grafica_2d.py   -> Gráficos 2D en tiempo real
 src/ui/plots/graficar_3d.py   -> Superficies 3D en tiempo real
@@ -75,10 +77,29 @@ Conexiones:
 2. Inicialización del Software:
    - Encender el Lock-in SR830.
    - Ejecutar el programa principal desde la terminal:
-     python main.py
 
-3. Operación en la Interfaz (GUI):
-   - Conexión: Usar el botón de Conectar/Homing para establecer la comunicación inicial con el hardware y calibrar el origen mecánico.
-   - Control Manual: Se puede abrir la sección de control manual para posicionar el láser o calibrar desplazamientos de desfase (offsets).
-   - Barrido Automatizado: Configurar los límites espaciales (X, Y) y los rangos de frecuencia del experimento. La resolución mínima física del laboratorio es de 5 micrómetros.
-   - Visualización y Almacenamiento: El sistema genera una base de datos temporal en memoria (DuckDB) para actualizar de forma asíncrona las gráficas 2D y superficies 3D en vivo. Al finalizar la tarea, exporta automáticamente los datos depurados a la carpeta data/raw en formato Parquet.
+     python main.py              # Modo normal (requiere hardware)
+     python main.py --sim        # Modo simulación (sin hardware)
+
+3. Modo Simulación:
+   - Si el hardware no responde, aparece un diálogo con opción a "Iniciar Simulación".
+   - En modo simulación se crean MesaXYSimulator y SR830Simulator con datos sintéticos.
+   - Badge amarillo "⚡ MODO SIMULACIÓN" visible en la sidebar.
+   - El botón "Stop / Desconectar" resetea el modo y permite reintentar conexión real.
+
+4. Operación en la Interfaz (GUI):
+   - Pestañas: La primera pestaña es "Movimiento" (control manual XY). Al iniciar
+     un barrido, la UI cambia automáticamente a "Medición 3D" o "Medición Cruz".
+   - Conexión: Usar el botón Home del panel lateral para conectar y calibrar el origen.
+   - Control Manual: Flechas para mover la mesa (positivo = izquierda y abajo),
+     slider de paso, botón de origen para definir nuevo (0, 0).
+   - Parámetros: Sliders X/Y (1–100 mm), Resolución (0.01–1.00 mm), Frecuencia (1–5000 Hz).
+   - Barrido Automatizado: Configurar los límites espaciales (X, Y) y los rangos de frecuencia.
+   - Visualización y Almacenamiento: DuckDB en memoria para gráficas en vivo. Al finalizar,
+     exporta automáticamente a data/raw en formato Parquet.
+
+6. Datos
+--------
+- Mediciones → data/raw/{TYPE}_{YYYYMMDD_HHMM}.parquet
+- Calibración → data/calibracion/calibracion.parquet
+- Aliases → data/raw/aliases.json
