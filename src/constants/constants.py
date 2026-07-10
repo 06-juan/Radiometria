@@ -60,7 +60,7 @@ class TableXY:
     Y_MAX = 100.0
 
     # Configuración del control manual de pasos (JOG)
-    DEFAULT_STEP = 10.0   # Paso por defecto (mm)
+    DEFAULT_STEP = 1.0   # Paso por defecto (mm)
     STEP_MIN = 1          # Mínimo del slider de pasos
     STEP_MAX = 1000       # Máximo del slider de pasos
     STEP_FACTOR = 100.0   # Divisor para convertir valor del slider a mm
