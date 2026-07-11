@@ -247,7 +247,7 @@ class DataManager:
             print(f"Error listando mediciones: {e}")
             return []
 
-    def cargar_medicion(self, experiment_id):
+    def cargar_medicion_3d(self, experiment_id):
         """
         Carga datos 3D desde un archivo Parquet para visualización.
 
@@ -264,29 +264,30 @@ class DataManager:
         if not path.exists():
             return None
 
-        # Intentar con columnas normalizadas primero, luego con crudas
+        # Estandarizamos los nombres usando ALIAS (AS mag, AS fase)
         intentos_query = [
-            f"SELECT x_pos, y_pos, magnitude_normalized, phase_normalized, laser_freq FROM '{str(path)}' ORDER BY y_pos ASC, x_pos ASC",
-            f"SELECT x_pos, y_pos, magnitude_r, phase_phi, laser_freq FROM '{str(path)}' ORDER BY y_pos ASC, x_pos ASC",
+            f"SELECT x_pos, y_pos, magnitude_normalized AS mag, phase_normalized AS fase, laser_freq FROM '{str(path)}'",
+            f"SELECT x_pos, y_pos, magnitude_r AS mag, phase_phi AS fase, laser_freq FROM '{str(path)}'",
         ]
 
-        rows = None
+        data = None
         for query in intentos_query:
             try:
-                rows = self.conn.execute(query).fetchall()
+                # .fetchnumpy() devuelve un dict de {columna: ndarray}
+                data = self.conn.execute(query).fetchnumpy()
                 break
             except Exception:
                 continue
 
-        if not rows:
+        if not data:
             print(f"No se pudieron extraer datos de {experiment_id}")
             return None
 
-        x_vals = np.array([r[0] for r in rows])
-        y_vals = np.array([r[1] for r in rows])
-        r_vals = np.array([r[2] for r in rows])
-        phi_vals = np.array([r[3] for r in rows])
-        freq_vals = np.array([r[4] for r in rows])
+        # Extraemos los arrays directamente
+        x_vals = data["x_pos"]
+        y_vals = data["y_pos"]
+        r_vals = data["mag"]
+        phi_vals = data["fase"]
 
         x_unique = np.unique(x_vals)
         y_unique = np.unique(y_vals)
@@ -297,16 +298,18 @@ class DataManager:
 
         x_max, y_max = float(x_vals.max()), float(y_vals.max())
         nx, ny = int(x_max / res) + 1, int(y_max / res) + 1
-        laser_freq = freq_vals[0]
 
+        # Creamos las grillas vacías
         z_mag = np.zeros((ny, nx))
         z_fase = np.zeros((ny, nx))
 
-        for x, y, r, phi in zip(x_vals, y_vals, r_vals, phi_vals):
-            ix = int(np.clip(round(x / res), 0, nx - 1))
-            iy = int(np.clip(round(y / res), 0, ny - 1))
-            z_mag[iy, ix] = r
-            z_fase[iy, ix] = phi
+        # Reemplazamos el bucle FOR por indexación vectorizada
+        ix = np.clip(np.round(x_vals / res).astype(int), 0, nx - 1)
+        iy = np.clip(np.round(y_vals / res).astype(int), 0, ny - 1)
+
+        # NumPy asigna todos los puntos en un solo paso en código C nativo
+        z_mag[iy, ix] = r_vals
+        z_fase[iy, ix] = phi_vals
 
         return {
             "x_max": x_max,
@@ -333,23 +336,38 @@ class DataManager:
             return None
 
         try:
-            query = f"SELECT x_pos, laser_freq, magnitude_normalized, phase_normalized, ch_y FROM '{str(path)}' ORDER BY x_pos ASC, laser_freq ASC"
-            rows = self.conn.execute(query).fetchall()
-
+            # ORDER BY para que los bloques de x_pos queden contiguos
+            query = f"""
+                SELECT x_pos, laser_freq, magnitude_normalized AS mag_n, phase_normalized AS phi_n, ch_y AS quad 
+                FROM '{str(path)}' 
+                ORDER BY x_pos ASC, laser_freq ASC
+            """
+            data = self.conn.execute(query).fetchnumpy()
+            
+            x_vals = data["x_pos"]
+            
+            # Encontramos dónde cambia x_pos y los índices de corte
+            unique_xs, indices = np.unique(x_vals, return_index=True)
+            
+            # np.split corta el array en sub-arrays basados en los índices de cambio (saltamos el cero)
+            split_freq = np.split(data["laser_freq"], indices[1:])
+            split_mag = np.split(data["mag_n"], indices[1:])
+            split_phi = np.split(data["phi_n"], indices[1:])
+            split_quad = np.split(data["quad"], indices[1:])
+            
+            # Construimos el diccionario final. 
+            # El bucle ahora corre solo 'U' veces (número de posiciones X).
             curves = {}
-            for r in rows:
-                idx = float(r[0])
-                if idx not in curves:
-                    curves[idx] = {"freq": [], "mag_n": [], "phi_n": [], "quad": []}
-                curves[idx]["freq"].append(r[1])
-                curves[idx]["mag_n"].append(r[2])
-                curves[idx]["phi_n"].append(r[3])
-                curves[idx]["quad"].append(r[4])
-
-            for k in curves:
-                for field in curves[k]:
-                    curves[k][field] = np.array(curves[k][field])
+            for x, f, m, p, q in zip(unique_xs, split_freq, split_mag, split_phi, split_quad):
+                curves[float(x)] = {
+                    "freq": f,
+                    "mag_n": m,
+                    "phi_n": p,
+                    "quad": q
+                }
+                
             return curves
+
         except Exception as e:
             print(f"Error cargando medición 2D: {e}")
             return None
