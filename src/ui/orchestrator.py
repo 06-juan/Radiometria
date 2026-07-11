@@ -720,7 +720,7 @@ class MeasurementOrchestrator(MainWindowUI):
 
     def _cargar_vista_3d(self, exp_id):
         """Carga datos 3D (superficie) en las gráficas."""
-        data = self.db_viewer.cargar_medicion(exp_id)
+        data = self.db_viewer.cargar_medicion_3d(exp_id)
         if not data:
             return
         self._switch_tab(1)  # Tab Medición 3D
