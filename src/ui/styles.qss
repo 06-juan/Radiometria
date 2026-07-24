@@ -109,19 +109,44 @@ QPushButton {
     padding: 9px 12px;
     border: 1px solid rgba(255,255,255,0.1);
     background-color: #161c28;
-    color: #8892a4;
+    color: #00c9a7;
     text-transform: uppercase;
 }
 
 QPushButton:hover {
     background-color: #1e2535;
-    color: #e8eaf0;
+    color: #00e5c0;
 }
 
 QPushButton:disabled {
     color: #3a4155;
     border-color: rgba(255,255,255,0.04);
     background-color: #0e1118;
+}
+
+QLineEdit:disabled {
+    color: #3a4155;
+    background-color: #0e1118;
+    border: 1px solid rgba(255,255,255,0.04);
+}
+
+QSlider:disabled {
+    opacity: 0.3;
+}
+
+QSlider::handle:horizontal:disabled {
+    background: #3a4155;
+    border-color: #0e1118;
+}
+
+QComboBox:disabled {
+    color: #3a4155;
+    background-color: #0e1118;
+    border-color: rgba(255,255,255,0.04);
+}
+
+QWidget:disabled {
+    color: #3a4155;
 }
 
 /* Home → azul */
@@ -166,6 +191,11 @@ QPushButton#btn_stop:hover {
     background-color: rgba(239,68,68,0.08);
     border-color: rgba(239,68,68,0.6);
     color: #fca5a5;
+}
+QPushButton#btn_stop:disabled {
+    color: #3a4155;
+    border-color: rgba(255,255,255,0.04);
+    background-color: #0e1118;
 }
 
 /* Cargar → púrpura */
@@ -349,8 +379,8 @@ QStatusBar {
 
 /* Laser — apagado */
 QPushButton#btn_laser {
-    border-color: rgba(34,197,94,0.3);
-    color: #5a8a6a;
+    border-color: rgba(239,68,68,0.5);
+    color: #fca5a5;
 }
 QPushButton#btn_laser:hover {
     background-color: rgba(34,197,94,0.08);

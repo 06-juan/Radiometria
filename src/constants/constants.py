@@ -55,9 +55,9 @@ class TableXY:
 
     # Límites físicos absolutos de la mesa (milímetros)
     X_MIN = 0.0
-    X_MAX = 100.0
+    X_MAX = 10.0
     Y_MIN = 0.0
-    Y_MAX = 100.0
+    Y_MAX = 10.0
 
     # Configuración del control manual de pasos (JOG)
     DEFAULT_STEP = 1.0   # Paso por defecto (mm)

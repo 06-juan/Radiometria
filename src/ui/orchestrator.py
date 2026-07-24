@@ -139,8 +139,8 @@ class MeasurementOrchestrator(MainWindowUI):
         Siempre muestra el diálogo para permitir reintentar o cambiar de modo.
         """
         self.btn_home.setEnabled(True)
-        self.btn_laser.setEnabled(False)
         self.btn_home.setText("\u2191  Ir a Home")
+        self.set_hardware_connected(False)
         self._set_hw_status("disconnected", "Error de conexión")
 
         # Diálogo con dos opciones
@@ -241,9 +241,7 @@ class MeasurementOrchestrator(MainWindowUI):
         else:
             self._set_hw_status("connected", "SR830 conectado")
 
-        self.btn_measure.setEnabled(True)
-        self.btn_cruz.setEnabled(True)
-        self.btn_laser.setEnabled(True)
+        self.set_hardware_connected(True)
         self.manual_control.set_mesa(self.mesa)
         self.manual_control.set_connected(True)
 
@@ -257,7 +255,7 @@ class MeasurementOrchestrator(MainWindowUI):
         """Fallo durante el homing: restaura estado de la UI."""
         self.btn_home.setEnabled(True)
         self.btn_home.setText("↑  Ir a Home")
-        self.btn_laser.setEnabled(False)
+        self.set_hardware_connected(False)
         self._set_hw_status("disconnected", "Error en home")
         QMessageBox.warning(self, "Error en Home", f"No se pudo ir a home: {error}")
 
@@ -546,14 +544,11 @@ class MeasurementOrchestrator(MainWindowUI):
             "disconnected",
             "Hardware liberado" if not self.sim_mode else "Simulación finalizada",
         )
+        self.set_hardware_connected(False)
         self.btn_home.setText("\u2191  Ir a Home")
         self.btn_home.setEnabled(True)
-        self.btn_laser.setEnabled(False)
         self.btn_laser.setChecked(False)
         self.btn_laser.setText("\u25c9  Laser")
-        self.btn_stop.setEnabled(False)
-        self.btn_measure.setEnabled(False)
-        self.btn_cruz.setEnabled(False)
         self.toggle_inputs(True)
         self.is_homed = False
         self._switch_tab(0)  # Volver a tab Movimiento

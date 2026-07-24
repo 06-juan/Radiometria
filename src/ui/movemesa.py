@@ -204,6 +204,15 @@ class ManualControlWidget(QWidget):
         self.slider.setEnabled(enabled)
         self.btn_origen.setEnabled(enabled)
         self.is_homed = connected
+
+        active_color = "#00c9a7" if connected else "#3a4155"
+        muted_color = "#8892a4" if connected else "#3a4155"
+
+        self.lbl_x.setStyleSheet(f"color: {active_color}; font-size: 16px; font-family: 'JetBrains Mono', monospace; font-weight: bold;")
+        self.lbl_y.setStyleSheet(f"color: {active_color}; font-size: 16px; font-family: 'JetBrains Mono', monospace; font-weight: bold;")
+        self.lbl_step_val.setStyleSheet(f"color: {active_color}; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono';")
+        self.hw_text.setStyleSheet(f"color: {muted_color}; font-size: 11px; font-family: 'JetBrains Mono';")
+
         if connected:
             self.hw_dot.setStyleSheet("color: #22c55e; font-size: 12px;")
             self.hw_text.setText("Mesa Lista y Calibrada")
