@@ -453,6 +453,13 @@ class MainWindowUI(QMainWindow):
 
     def toggle_inputs(self, enable: bool):
         for w in (self.slider_x, self.slider_y, self.slider_res, self.slider_freq,
-                  self.btn_home, self.btn_measure, self.btn_cruz, self.btn_stop):
+                  self.input_x, self.input_y, self.input_res, self.input_freq,
+                  self.input_f_start, self.input_f_end, self.input_f_pts,
+                  self.btn_home, self.btn_measure, self.btn_cruz):
             w.setEnabled(enable)
-        self.btn_stop.setEnabled(not enable)
+
+    def set_hardware_connected(self, connected: bool):
+        self.btn_stop.setEnabled(connected)
+        self.btn_laser.setEnabled(connected)
+        self.btn_measure.setEnabled(connected)
+        self.btn_cruz.setEnabled(connected)
