@@ -14,7 +14,7 @@ class Laser:
     """Voltajes de control del láser mediante AUX OUT 3 + puerta AND."""
 
     ON_VOLTAGE = 5.0   # Encender láser
-    OFF_VOLTAGE = 0.6  # Apagar láser
+    OFF_VOLTAGE = 0.6  # Apagar láser (Empirico)
 
 
 class LockIn:

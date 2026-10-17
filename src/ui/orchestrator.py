@@ -298,11 +298,11 @@ class MeasurementOrchestrator(MainWindowUI):
             return
         try:
             if self.btn_laser.isChecked():
-                self.lockin.set_amplitude(Laser.ON_VOLTAGE)
+                self.lockin.set_amplitude_laser(Laser.ON_VOLTAGE)
                 self.btn_laser.setText("◉  ON")
                 self._status_bar.showMessage("Laser encendido")
             else:
-                self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
+                self.lockin.set_amplitude_laser(Laser.OFF_VOLTAGE)
                 self.btn_laser.setText("◉  Laser")
                 self._status_bar.showMessage("Laser apagado")
         except Exception as e:
@@ -509,7 +509,7 @@ class MeasurementOrchestrator(MainWindowUI):
         # Apagar láser
         if self.lockin:
             try:
-                self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
+                self.lockin.set_amplitude_laser(Laser.OFF_VOLTAGE)
             except Exception as e:
                 print(f"Error apagado láser: {e}")
 
@@ -564,7 +564,7 @@ class MeasurementOrchestrator(MainWindowUI):
         self._abort = True
         if self.lockin:
             try:
-                self.lockin.set_amplitude(Laser.OFF_VOLTAGE)
+                self.lockin.set_amplitude_laser(Laser.OFF_VOLTAGE)
                 self.lockin.close()
             except Exception:
                 pass

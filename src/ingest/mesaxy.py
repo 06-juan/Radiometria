@@ -111,7 +111,7 @@ class MesaXY:
           5. Ejecutar auto-ganancia
         """
         lockin_device.set_frequency(freq, True)
-        lockin_device.set_amplitude(Laser.ON_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.ON_VOLTAGE)
         time.sleep(TableXY.DELAY_PRE_START)
         lockin_device.Reserve()
         lockin_device.auto_gain()
@@ -178,7 +178,7 @@ class MesaXY:
                 time.sleep(0.001)
 
         # Apagar láser al terminar
-        lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
 
     def cruz_frequency_generator(self, lockin_device, x_max, y_max, f_start, f_end, steps):
         """
@@ -229,7 +229,7 @@ class MesaXY:
 
                         yield punto_actual, f, z_data
 
-                    lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+                    lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
                     punto_actual += 1
                     self._send_command("CONT")
 
@@ -239,7 +239,7 @@ class MesaXY:
                 time.sleep(0.001)
 
         # Apagar láser al terminar
-        lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
 
     def disable(self):
         """Deshabilita los motores paso a paso (EN_OFF)."""

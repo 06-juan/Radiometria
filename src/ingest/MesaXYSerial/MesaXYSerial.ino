@@ -123,7 +123,7 @@ void processCommand(String cmd) {
     Serial.println("Fin");
 
     } else if (cmd.startsWith("CRUZ")) {
-      //proximamente se usara con el barrido en freucuencia
+      //5 puntos generando una cruz evaluando el rango de frecuencias
     float x_max, y_max;
     if (parseTwoFloats(cmd, 5, x_max, y_max)) {
       if (!motorsEnabled) {
@@ -282,7 +282,7 @@ void run5PointCheck(float x_max, float y_max) {
   Serial.println("DBG Starting 5-point alignment");
 
   for (int i = 0; i < 5 && sweepActive; i++) {
-    // Reutilizamos tu lógica de: mover -> "LASER" -> esperar "CONT"
+    // Reutilizamos la lógica de: mover -> "LASER" -> esperar "CONT"
     stepAndPause(pointsX[i], pointsY[i]);
   }
 

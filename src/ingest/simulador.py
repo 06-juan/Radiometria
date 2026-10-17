@@ -48,7 +48,7 @@ class MesaXYSimulator:
     def _pre_start_lockin(self, lockin_device, freq):
         """Configura el lock-in simulado antes del barrido."""
         lockin_device.set_frequency(freq, True)
-        lockin_device.set_amplitude(Laser.ON_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.ON_VOLTAGE)
         lockin_device.Reserve()
         lockin_device.auto_gain()
 
@@ -84,7 +84,7 @@ class MesaXYSimulator:
 
                 yield x, y, z_data
 
-        lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
 
     def cruz_frequency_generator(self, lockin_device, x_max, y_max, f_start, f_end, steps):
         """
@@ -125,10 +125,10 @@ class MesaXYSimulator:
 
                 yield idx, f, z_data
 
-            lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+            lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
             time.sleep(0.01)
 
-        lockin_device.set_amplitude(Laser.OFF_VOLTAGE)
+        lockin_device.set_amplitude_laser(Laser.OFF_VOLTAGE)
 
     def disable(self):
         """No-op en simulación."""
@@ -175,9 +175,9 @@ class SR830Simulator:
             self.current_tc_val = 0.1
             self.current_slope_factor = 5
         else:
-            self._ajustar_dinamico(freq)
+            self._set_config_dinamica(freq)
 
-    def _ajustar_dinamico(self, freq):
+    def _set_config_dinamica(self, freq):
         """Ajusta TC y slope ficticios según la frecuencia."""
         if freq < 100:
             self.current_slope_factor = 10
@@ -207,7 +207,7 @@ class SR830Simulator:
 
         return {"X": float(x), "Y": float(y), "R": float(r), "phi": float(phi)}
 
-    def set_amplitude(self, voltage):
+    def set_amplitude_laser(self, voltage):
         """Registra el estado del láser (sin enviar AUXV real)."""
         self._laser_voltage = voltage
 

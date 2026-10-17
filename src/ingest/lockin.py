@@ -31,7 +31,6 @@ if str(raiz_proyecto) not in sys.path:
 
 from src.constants.constants import LockIn
 
-
 class SR830:
     """
     Driver del SR830 lock-in amplifier.
@@ -86,7 +85,7 @@ class SR830:
             indice_tc = 8 if freq < 300 else 7
             self._set_config_fija(indice_tc, slope_index=3)
         else:
-            self._ajustar_dinamico(freq)
+            self._set_config_dinamica(freq)
 
         # Tiempo de asentamiento: factor × TC
         wait_time = (10 if es_primero else self.current_slope_factor) * self.current_tc_val
@@ -97,9 +96,9 @@ class SR830:
             self.get_measurements()
             time.sleep(0.5)
 
-    def _ajustar_dinamico(self, freq):
+    def _set_config_dinamica(self, freq):
         """
-        Auto-selecciona TC y pendiente según la frecuencia.
+        Auto-selecciona TC del lock-in y pendiente según la frecuencia.
 
         Criterios:
           - f < 100 Hz: pendiente 24 dB/oct, factor 10
@@ -155,7 +154,7 @@ class SR830:
             print(f"Error en lectura SNAP: {e}")
             return None
 
-    def set_amplitude(self, voltage):
+    def set_amplitude_laser(self, voltage):
         """
         Controla el láser via AUX OUT 3 + puerta AND externa.
 
