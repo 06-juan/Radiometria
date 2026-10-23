@@ -7,7 +7,7 @@ Comunicación bidireccional con Arduino (AccelStepper firmware):
   Arduino → Python: READY, HOMED, POS x y, LASER, Fin, OK, ERR ...
 
 Patrón de diseño: Inyección de Dependencias.
-  Los generators接收 el dispositivo de medición (lockin) como parámetro
+  Los generators el dispositivo de medición (lockin) como parámetro
   externo, permitiendo inyectar tanto el hardware real (SR830) como un
   simulador (SR830Simulator) para debugging sin dispositivos físicos.
 

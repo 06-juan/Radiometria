@@ -21,8 +21,6 @@ Protocolo SCPI utilizado:
 import sys
 import time
 from pathlib import Path
-
-import numpy as np
 import pyvisa
 
 raiz_proyecto = Path(__file__).resolve().parent.parent.parent
