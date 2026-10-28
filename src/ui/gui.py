@@ -326,10 +326,10 @@ class MainWindowUI(QMainWindow):
     def _build_stats_bar(self):
         bar = QFrame()
         bar.setObjectName("stats_bar")
-        bar.setFixedHeight(38)
+        bar.setFixedHeight(42)
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(20, 0, 20, 0)
-        layout.setSpacing(24)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(14)
 
         def stat(lbl_text, obj="stat_val"):
             layout.addWidget(make_label(lbl_text, "stat_lbl"))
@@ -337,12 +337,16 @@ class MainWindowUI(QMainWindow):
             layout.addWidget(val)
             return val
 
-        self.stat_x     = stat("X POS",  "stat_val_hi")
-        self.stat_y     = stat("Y POS",  "stat_val_hi")
-        self.stat_r     = stat("R")
-        self.stat_phi   = stat("φ")
+        self.stat_x       = stat("X", "stat_val_hi")
+        self.stat_y       = stat("Y", "stat_val_hi")
+        self.stat_r_range = stat("R [mín, máx]")
+        self.stat_phi_range = stat("φ [mín, máx]")
+        self.stat_frec    = stat("FREC")
+        self.stat_res     = stat("RES")
+        
         layout.addStretch()
-        self.stat_npts  = stat("PUNTOS")
+        
+        self.stat_npts   = stat("PUNTOS")
         self.stat_estado = stat("ESTADO")
         return bar
 
@@ -438,18 +442,27 @@ class MainWindowUI(QMainWindow):
 
         self._status_bar.showMessage(msg or state)
 
-    def _update_stats(self, x=None, y=None, r=None, phi=None):
-        if x   is not None: self.stat_x.setText(f"{x:.3f} mm")
-        if y   is not None: self.stat_y.setText(f"{y:.3f} mm")
-        if r   is not None: self.stat_r.setText(f"{r:.2f} µV")
-        if phi is not None: self.stat_phi.setText(f"{phi:.2f}°")
-        self._npts += 1
-        self.stat_npts.setText(str(self._npts))
+    def _update_stats(self, x=None, y=None, r_min=None, r_max=None, phi_min=None, phi_max=None, freq=None, res=None, n_pts=None):
+        """Actualiza todos los indicadores físicos del pie de página."""
+        if x is not None: self.stat_x.setText(f"{x:.2f} mm")
+        if y is not None: self.stat_y.setText(f"{y:.2f} mm")
 
-        fase_m = self.findChild(QLabel, "fase_meta")
-        mag_m = self.findChild(QLabel, "mag_meta")
-        if fase_m: fase_m.setText(f"{self._npts} puntos")
-        if mag_m: mag_m.setText(f"{self._npts} puntos")
+        if r_min is not None and r_max is not None:
+            self.stat_r_range.setText(f"{r_min*1e6:.2f} — {r_max*1e6:.2f} µV")
+
+        if phi_min is not None and phi_max is not None:
+            self.stat_phi_range.setText(f"{phi_min:.1f}° — {phi_max:.1f}°")
+
+        if freq is not None: self.stat_frec.setText(f"{freq:.0f} Hz")
+        if res is not None:  self.stat_res.setText(f"{res:.2f} mm")
+
+        if n_pts is not None:
+            self._npts = n_pts
+            self.stat_npts.setText(str(self._npts))
+            fase_m = self.findChild(QLabel, "fase_meta")
+            mag_m = self.findChild(QLabel, "mag_meta")
+            if fase_m: fase_m.setText(f"{self._npts} puntos")
+            if mag_m: mag_m.setText(f"{self._npts} puntos")
 
     def toggle_inputs(self, enable: bool):
         for w in (self.slider_x, self.slider_y, self.slider_res, self.slider_freq,
