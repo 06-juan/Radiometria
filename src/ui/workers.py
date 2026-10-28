@@ -78,7 +78,7 @@ class WorkerThread(QThread):
                 f=self.freq,
             )
             for x, y, data in generator:
-                self.data_signal.emit(x, y, data)
+                self.data_signal.emit(float(x), float(y), data)
             self.finished_signal.emit()
         except Exception as e:
             self.error_signal.emit(str(e))
@@ -123,7 +123,7 @@ class CruzWorkerThread(QThread):
                 steps=self.steps,
             )
             for idx, f, data in generator:
-                self.data_signal.emit(idx, f, data)
+                self.data_signal.emit(int(idx), float(f), data)
             self.finished_signal.emit()
         except Exception as e:
             self.error_signal.emit(str(e))

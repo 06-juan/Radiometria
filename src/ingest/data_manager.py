@@ -3,12 +3,12 @@
 Gestor de datos experimentales — buffer persistente por lotes y exportación a Parquet.
 
 Responsabilidades:
-  - Mantener un buffer temporal en disco (.buffer_temp.db) resistente a fallos de energía/app.
-  - Escritura por lotes (batching) en disco para evitar saturación de I/O y memoria RAM.
-  - Normalización en tiempo real de fase (respecto a calibración de acero).
-  - Normalización global al vuelo de amplitud durante la exportación final.
-  - Exportación a archivos Parquet en data/raw/.
-  - Gestión de historial (listar, cargar, eliminar, alias).
+- Mantener un buffer temporal en disco (.buffer_temp.db) resistente a fallos de energía/app.
+- Escritura por lotes (batching) en disco para evitar saturación de I/O y memoria RAM.
+- Normalización en tiempo real de fase (respecto a calibración de acero).
+- Normalización global al vuelo de amplitud durante la exportación final.
+- Exportación a archivos Parquet en data/raw/.
+- Gestión de historial (listar, cargar, eliminar, alias).
 
 Estructura del buffer (buffer_activo):
   experiment_id, timestamp, x_pos, y_pos,
@@ -16,9 +16,9 @@ Estructura del buffer (buffer_activo):
   phase_phi, phase_normalized, laser_freq
 
 Flujo típico:
-  1. iniciar_nuevo_experimento(tipo) → genera ID y limpia buffer
-  2. guardar_punto(x, y, lockin_data, freq) → acumula en RAM y vuelca a disco cada N puntos
-  3. finalizar_experimento() → vuelca residuo, normaliza al vuelo y exporta a Parquet
+1. iniciar_nuevo_experimento(tipo) → genera ID y limpia buffer
+2. guardar_punto(x, y, lockin_data, freq) → acumula en RAM y vuelca a disco cada N puntos
+3. finalizar_experimento() → vuelca residuo, normaliza al vuelo y exporta a Parquet
 """
 
 import json
@@ -49,7 +49,14 @@ class DataManager:
 
         # Base de datos física temporal en disco para evitar pérdida de datos ante crashes
         self.db_path = self.folder / ".buffer_temp.db"
-        self.conn = duckdb.connect(database=str(self.db_path))
+        
+        # Conexión resiliente a DuckDB: si el archivo físico ya está abierto por otra instancia (ej. db_viewer),
+        # se utiliza conexión en memoria para lectura de Parquets sin bloquear el buffer.
+        try:
+            self.conn = duckdb.connect(database=str(self.db_path))
+            self._inicializar_buffer()
+        except Exception:
+            self.conn = duckdb.connect(database=":memory:")
 
         self.current_experiment_id = None
 
@@ -58,8 +65,6 @@ class DataManager:
         self.cal_mags = None     # Amplitudes de referencia (reservado)
         self.cal_phases = None   # Fases de referencia (numpy array)
         self.max_mag_actual = 0.0
-
-        self._inicializar_buffer()
 
     def _inicializar_buffer(self):
         """Crea la tabla física temporal con el esquema de medición si no existe."""
@@ -78,7 +83,10 @@ class DataManager:
             laser_freq DOUBLE
         );
         """
-        self.conn.execute(query)
+        try:
+            self.conn.execute(query)
+        except Exception as e:
+            print(f"Aviso al inicializar buffer: {e}")
 
     def _flush_buffer(self):
         """Vuelca los puntos acumulados en la RAM hacia el archivo de base de datos en disco."""
@@ -113,9 +121,10 @@ class DataManager:
             return False
 
         try:
-            cal_data = duckdb.execute(f"""
+            str_path = str(path_cal).replace("\\", "/")
+            cal_data = self.conn.execute(f"""
                 SELECT laser_freq, phase_phi
-                FROM read_parquet('{str(path_cal)}')
+                FROM read_parquet('{str_path}')
                 ORDER BY laser_freq ASC
             """).fetchnumpy()
 
@@ -139,17 +148,20 @@ class DataManager:
             tipo: Tipo de experimento ("XY" o "FREQ").
 
         Returns:
-            ID del experimento generado (ej: XY_20260708_1430).
+            ID del experimento generado (ej: XY_20260708_143000).
         """
         now = datetime.now()
-        timestamp = now.strftime("%Y%m%d_%H%M")
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
         self.current_experiment_id = f"{tipo.upper()}_{timestamp}"
 
         self.max_mag_actual = 1e-12
         self.ram_buffer.clear()
 
         # Limpiar registros previos en el archivo DB
-        self.conn.execute("DELETE FROM buffer_activo")
+        try:
+            self.conn.execute("DELETE FROM buffer_activo")
+        except Exception:
+            pass
         return self.current_experiment_id
 
     def guardar_punto(self, x, y, lockin_data, freq):
@@ -179,10 +191,10 @@ class DataManager:
         else:
             phi_norm = phi_raw
 
-        # Guardar en el lote actual en RAM (magnitude_normalized se calculará al exportar)
+        # Guardar en el lote actual en RAM formateando fecha como string ISO para DuckDB
         row = (
             self.current_experiment_id,
-            datetime.now(),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
             float(x),
             float(y),
             float(lockin_data.get("X", 0.0)),
@@ -218,9 +230,15 @@ class DataManager:
             self._flush_buffer()
 
             path = self.folder / f"{self.current_experiment_id}.parquet"
+            str_path = str(path).replace("\\", "/")
+
+            # Verificar si hay registros antes de exportar
+            cnt = self.conn.execute("SELECT COUNT(*) FROM buffer_activo").fetchone()[0]
+            if cnt == 0:
+                print(f"Sin datos en buffer para exportar en {self.current_experiment_id}")
+                return
 
             # 2. Exportación a Parquet calculando magnitude_normalized al vuelo en la consulta SQL.
-            #    Esto evita hacer un 'UPDATE' masivo sobre la tabla en disco/RAM.
             copy_query = f"""
             COPY (
                 SELECT 
@@ -236,7 +254,7 @@ class DataManager:
                     phase_normalized,
                     laser_freq
                 FROM buffer_activo
-            ) TO '{str(path)}' (FORMAT PARQUET);
+            ) TO '{str_path}' (FORMAT PARQUET);
             """
             self.conn.execute(copy_query)
 
@@ -259,10 +277,10 @@ class DataManager:
             return []
 
         try:
-            path_glob = self.folder / "*.parquet"
+            path_glob = str(self.folder / "*.parquet").replace("\\", "/")
             query = f"""
                 SELECT experiment_id, MIN(timestamp) as fecha, COUNT(*) as n_puntos
-                FROM '{str(path_glob)}'
+                FROM '{path_glob}'
                 GROUP BY experiment_id
                 ORDER BY fecha DESC
             """
@@ -277,9 +295,12 @@ class DataManager:
         if not path.exists():
             return None
 
+        str_path = str(path).replace("\\", "/")
+        # Priorizar magnitude_r (Voltios reales) sobre magnitude_normalized (0 a 1)
         intentos_query = [
-            f"SELECT x_pos, y_pos, magnitude_normalized AS mag, phase_normalized AS fase, laser_freq FROM '{str(path)}'",
-            f"SELECT x_pos, y_pos, magnitude_r AS mag, phase_phi AS fase, laser_freq FROM '{str(path)}'",
+            f"SELECT x_pos, y_pos, magnitude_r AS mag, phase_normalized AS fase, laser_freq FROM '{str_path}'",
+            f"SELECT x_pos, y_pos, magnitude_r AS mag, phase_phi AS fase, laser_freq FROM '{str_path}'",
+            f"SELECT x_pos, y_pos, magnitude_normalized AS mag, phase_normalized AS fase, laser_freq FROM '{str_path}'",
         ]
 
         data = None
@@ -335,9 +356,10 @@ class DataManager:
             return None
 
         try:
+            str_path = str(path).replace("\\", "/")
             query = f"""
                 SELECT x_pos, laser_freq, magnitude_normalized AS mag_n, phase_normalized AS phi_n, ch_y AS quad 
-                FROM '{str(path)}' 
+                FROM '{str_path}' 
                 ORDER BY x_pos ASC, laser_freq ASC
             """
             data = self.conn.execute(query).fetchnumpy()
